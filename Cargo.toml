@@ -1,0 +1,17 @@
+[package]
+name = "moshiki"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+binggan = "0.14.2"
+memchr = "2.7.5"
+
+[[bench]]
+name = "bench_tokenizer"
+harness = false
+
+# debug in bench profile
+[profile.bench]
+debug = true
+
