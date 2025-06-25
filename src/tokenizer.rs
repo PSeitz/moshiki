@@ -17,12 +17,13 @@ pub enum Token<'a> {
     Uuid(&'a str),
     Word(&'a str),
     Punctuation(&'a str),
-    Whitespace(&'a str),
+    Whitespace(usize),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct TokenType(pub u8);
 impl From<u8> for TokenType {
+    #[inline]
     fn from(val: u8) -> Self {
         TokenType(val)
     }
@@ -30,6 +31,7 @@ impl From<u8> for TokenType {
 
 /// Retrun an ID for each token type
 impl<'a> Token<'a> {
+    #[inline]
     pub fn type_id(&self) -> TokenType {
         let val = match self {
             Token::Word(_) => 0u8,
@@ -41,22 +43,25 @@ impl<'a> Token<'a> {
         };
         val.into()
     }
+    #[inline]
     pub const fn type_id_num_bits() -> u8 {
         3 // 6 types, fits in 3 bits
     }
-    pub fn as_str(&self) -> &str {
+    #[inline]
+    pub fn as_str(&self) -> Option<&str> {
         match self {
             Token::Word(s)
             | Token::Number(s)
             | Token::IPv4(s)
             | Token::Uuid(s)
-            | Token::Punctuation(s)
-            | Token::Whitespace(s) => s,
+            | Token::Punctuation(s) => Some(s),
+            Token::Whitespace(_) => None,
         }
     }
 }
 
 /// Quick IPv4 check: four octets 0–255
+#[inline]
 fn is_ipv4(s: &str) -> bool {
     if s.is_empty()
         || !s.chars().next().unwrap().is_ascii_digit()
@@ -82,11 +87,13 @@ fn is_ipv4(s: &str) -> bool {
 }
 
 /// All digits (treat any numeric token as Number)
+#[inline]
 fn is_number(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Simple UUID v4-ish check (36 chars + hyphens)
+#[inline]
 fn is_uuid(s: &str) -> bool {
     if s.len() != 36 {
         return false;
@@ -110,6 +117,7 @@ pub struct Tokenizer<'a> {
 }
 
 impl<'a> Tokenizer<'a> {
+    #[inline]
     pub fn new(input: &'a str) -> Self {
         Tokenizer { input, pos: 0 }
     }
@@ -118,6 +126,7 @@ impl<'a> Tokenizer<'a> {
 impl<'a> Iterator for Tokenizer<'a> {
     type Item = Token<'a>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let bytes = self.input.as_bytes();
         let len = bytes.len();
@@ -131,7 +140,7 @@ impl<'a> Iterator for Tokenizer<'a> {
             while self.pos < len && bytes[self.pos].is_ascii_whitespace() {
                 self.pos += 1;
             }
-            return Some(Token::Whitespace(&self.input[start..self.pos]));
+            return Some(Token::Whitespace(self.pos - start));
         }
 
         // 2) Punctuation (single char), exclude '.', '-', '_'
@@ -182,16 +191,16 @@ mod tests {
             vec![
                 Token::Word("src"),
                 Token::Punctuation(":"),
-                Token::Whitespace(" "),
+                Token::Whitespace(1),
                 Token::Punctuation("/"),
                 Token::IPv4("10.10.34.30"),
                 Token::Punctuation(":"),
                 Token::Number("33078"),
                 Token::Punctuation(","),
-                Token::Whitespace(" "),
+                Token::Whitespace(1),
                 Token::Word("dest"),
                 Token::Punctuation(":"),
-                Token::Whitespace(" "),
+                Token::Whitespace(1),
                 Token::Punctuation("/"),
                 Token::IPv4("10.10.34.11"),
                 Token::Punctuation(":"),
@@ -207,16 +216,16 @@ mod tests {
         let expected = vec![
             Token::Word("PacketResponder"),
             Token::Punctuation(":"),
-            Token::Whitespace(" "),
+            Token::Whitespace(1),
             Token::Word("BP-108841162-10.10.34.11-1440074360971"),
             Token::Punctuation(":"),
             Token::Word("blk_1074072698_331874"),
             Token::Punctuation(","),
-            Token::Whitespace(" "),
+            Token::Whitespace(1),
             Token::Word("type"),
             Token::Punctuation("="),
             Token::Word("HAS_DOWNSTREAM_IN_PIPELINE"),
-            Token::Whitespace(" "),
+            Token::Whitespace(1),
             Token::Word("terminating"),
         ];
         assert_eq!(toks, expected);
@@ -228,8 +237,8 @@ mod tests {
                 | Token::Number(s)
                 | Token::Uuid(s)
                 | Token::Word(s)
-                | Token::Punctuation(s)
-                | Token::Whitespace(s) => *s,
+                | Token::Punctuation(s) => s.to_string(),
+                Token::Whitespace(s) => " ".repeat(*s),
             })
             .collect();
         assert_eq!(reconstructed, line);
