@@ -1,3 +1,10 @@
+pub fn tokenize_into<'a>(input: &'a str, tokens: &mut Vec<Token<'a>>) {
+    let tokenizer = Tokenizer::new(input);
+    for token in tokenizer {
+        tokens.push(token);
+    }
+}
+
 pub fn tokenize(input: &str) -> Vec<Token> {
     Tokenizer::new(input).collect()
 }
@@ -13,17 +20,26 @@ pub enum Token<'a> {
     Whitespace(&'a str),
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct TokenType(pub u8);
+impl From<u8> for TokenType {
+    fn from(val: u8) -> Self {
+        TokenType(val)
+    }
+}
+
 /// Retrun an ID for each token type
 impl<'a> Token<'a> {
-    pub fn type_id(&self) -> u8 {
-        match self {
-            Token::Word(_) => 0,
+    pub fn type_id(&self) -> TokenType {
+        let val = match self {
+            Token::Word(_) => 0u8,
             Token::Number(_) => 1,
             Token::IPv4(_) => 2,
             Token::Uuid(_) => 3,
             Token::Punctuation(_) => 4,
             Token::Whitespace(_) => 5,
-        }
+        };
+        val.into()
     }
     pub const fn type_id_num_bits() -> u8 {
         3 // 6 types, fits in 3 bits

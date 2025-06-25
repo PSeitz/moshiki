@@ -1,15 +1,14 @@
-use crate::Token;
+use crate::{Token, tokenizer::TokenType};
 
-/// This function generates a fingerprint for a slice of tokens based on their types.
-pub fn fingerprint(tokens: &[Token]) -> u64 {
-    // Push each token type into the u32  fingerprint.
+/// This function generates a fingerprint for an iterator of token types.
+pub fn fingerprint(tokens: impl Iterator<Item = TokenType>) -> u64 {
+    // Push each token type into the u64  fingerprint.
     let num_bits_per_type = Token::type_id_num_bits();
     let mut fingerprint = 0;
     let mut current_pos = 0;
     let max_tokens = 64 / num_bits_per_type as usize;
-    for token in tokens.iter().take(max_tokens) {
-        let token_type = token.type_id();
-        fingerprint |= (token_type as u64) << current_pos;
+    for token_type in tokens.take(max_tokens) {
+        fingerprint |= (token_type.0 as u64) << current_pos;
         current_pos += num_bits_per_type;
     }
     fingerprint
@@ -27,6 +26,9 @@ mod test {
         let bits = Token::type_id_num_bits() as u64;
         let expected = (1 << 0) | (1 << bits);
 
-        assert_eq!(fingerprint(&[a, b]), expected);
+        assert_eq!(
+            fingerprint([a.type_id(), b.type_id()].into_iter()),
+            expected
+        );
     }
 }
