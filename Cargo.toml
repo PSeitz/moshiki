@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 binggan = "0.14.2"
+fnv = "1.0.7"
 memchr = "2.7.5"
 
 [[bench]]

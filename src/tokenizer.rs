@@ -1,3 +1,7 @@
+pub fn tokenize(input: &str) -> Vec<Token> {
+    Tokenizer::new(input).collect()
+}
+
 /// Typed token kinds with zero allocations
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token<'a> {
@@ -7,6 +11,33 @@ pub enum Token<'a> {
     Word(&'a str),
     Punctuation(&'a str),
     Whitespace(&'a str),
+}
+
+/// Retrun an ID for each token type
+impl<'a> Token<'a> {
+    pub fn type_id(&self) -> u8 {
+        match self {
+            Token::Word(_) => 0,
+            Token::Number(_) => 1,
+            Token::IPv4(_) => 2,
+            Token::Uuid(_) => 3,
+            Token::Punctuation(_) => 4,
+            Token::Whitespace(_) => 5,
+        }
+    }
+    pub const fn type_id_num_bits() -> u8 {
+        3 // 6 types, fits in 3 bits
+    }
+    pub fn as_str(&self) -> &str {
+        match self {
+            Token::Word(s)
+            | Token::Number(s)
+            | Token::IPv4(s)
+            | Token::Uuid(s)
+            | Token::Punctuation(s)
+            | Token::Whitespace(s) => s,
+        }
+    }
 }
 
 /// Quick IPv4 check: four octets 0–255
@@ -129,7 +160,7 @@ mod tests {
     #[test]
     fn test_tokenizer_simple() {
         let line = "src: /10.10.34.30:33078, dest: /10.10.34.11:50010";
-        let toks: Vec<_> = Tokenizer::new(line).collect();
+        let toks: Vec<_> = tokenize(line);
         assert_eq!(
             toks,
             vec![
@@ -156,7 +187,7 @@ mod tests {
     #[test]
     fn test_packet_expected_and_reconstruction() {
         let line = "PacketResponder: BP-108841162-10.10.34.11-1440074360971:blk_1074072698_331874, type=HAS_DOWNSTREAM_IN_PIPELINE terminating";
-        let toks: Vec<_> = Tokenizer::new(line).collect();
+        let toks: Vec<_> = tokenize(line);
         let expected = vec![
             Token::Word("PacketResponder"),
             Token::Punctuation(":"),
