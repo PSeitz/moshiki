@@ -1,4 +1,4 @@
-use binggan::{BenchRunner, INSTRUMENTED_SYSTEM, PeakMemAlloc, black_box, plugins::*};
+use binggan::{black_box, plugins::*, BenchRunner, PeakMemAlloc, INSTRUMENTED_SYSTEM};
 use moshiki::{patterns::preliminary_index, tokenizer::Tokenizer};
 
 #[global_allocator]
@@ -55,6 +55,6 @@ fn bench_mini_index() {
 }
 
 fn main() {
-    //bench_tokenizer();
+    bench_tokenizer();
     bench_mini_index();
 }

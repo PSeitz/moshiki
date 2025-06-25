@@ -3,6 +3,7 @@ use stacker::ArenaHashMap;
 use crate::{
     fingerprint::fingerprint,
     tokenizer::{TokenType, Tokenizer},
+    Token,
 };
 
 pub struct PreliminaryIndex {
@@ -25,6 +26,7 @@ impl CompositeToken {
     }
 
     /// Extract the TokenType from the top 4 bits
+    #[inline]
     pub fn token_type(&self) -> TokenType {
         let token_type = ((self.0 >> 28) & 0xF) as u8;
         token_type.into()
@@ -47,19 +49,28 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
     let mut preliminary_docs = Vec::new();
 
     for line in lines {
-        // Tokenize and process
         let mut token_type_with_term_ids: Vec<CompositeToken> = Vec::with_capacity(32);
         let tokenizer = Tokenizer::new(&line);
         for token in tokenizer {
             let next_id = term_hash_map.len() as u32;
-            let mut term_id = 0;
-            if let Some(token_str) = token.as_str() {
-                term_hash_map.mutate_or_create(token_str.as_bytes(), |opt| {
-                    term_id = opt.unwrap_or(next_id);
-                    term_id
-                });
+            match token {
+                Token::IPv4(v)
+                | Token::Number(v)
+                | Token::Uuid(v)
+                | Token::Word(v)
+                | Token::Punctuation(v) => {
+                    let mut term_id = 0;
+                    term_hash_map.mutate_or_create(v.as_bytes(), |opt| {
+                        term_id = opt.unwrap_or(next_id);
+                        term_id
+                    });
+                    token_type_with_term_ids.push((token.type_id(), term_id).into());
+                }
+                // Term id for whitespace is the number of whitespace characters
+                Token::Whitespace(num) => {
+                    token_type_with_term_ids.push((token.type_id(), num as u32).into());
+                }
             }
-            token_type_with_term_ids.push((token.type_id(), term_id).into());
         }
         let fingerprint = fingerprint(
             token_type_with_term_ids
