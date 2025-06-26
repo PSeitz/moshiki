@@ -1,6 +1,6 @@
 use std::{collections::HashSet, io::BufRead};
 
-use moshiki::patterns::preliminary_index;
+use moshiki::prelim_index::preliminary_index;
 
 fn main() {
     // First param is the NDJSON
