@@ -72,8 +72,5 @@ pub fn detect_template_parts(docs: &[PrelimDoc]) {
             );
         }
     }
-    println!(
-        "Found {} template positions out of {} total positions",
-        num_templates, num_tokens
-    );
+    println!("{num_templates}/{num_tokens} are templates",);
 }
