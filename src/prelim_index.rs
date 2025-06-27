@@ -95,8 +95,8 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         //}
 
         let fingerprint = fingerprint(
-            token_type_with_term_ids
-                .iter()
+            PrelimDoc(token_type_with_term_ids.clone())
+                .without_whitespace()
                 .map(|comp_token| comp_token.token_type()),
         );
 
@@ -111,15 +111,26 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
 
 #[derive(Debug, Clone)]
 pub struct PreliminaryDoc {
-    pub token_type_with_term_ids: Vec<CompositeToken>,
+    pub token_type_with_term_ids: PrelimDoc,
     pub fingerprint: u64,
 }
 
 impl PreliminaryDoc {
     fn new(token_type_with_term_ids: Vec<CompositeToken>, fingerprint: u64) -> Self {
         PreliminaryDoc {
-            token_type_with_term_ids,
+            token_type_with_term_ids: PrelimDoc(token_type_with_term_ids),
             fingerprint,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PrelimDoc(pub Vec<CompositeToken>);
+
+impl PrelimDoc {
+    pub fn without_whitespace(&self) -> impl Iterator<Item = &CompositeToken> {
+        self.0
+            .iter()
+            .filter(|token| !token.token_type().is_whitespace())
     }
 }

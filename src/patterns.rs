@@ -1,8 +1,6 @@
-use std::collections::HashSet;
+use fnv::{FnvHashMap, FnvHashSet};
 
-use fnv::FnvHashMap;
-
-use crate::prelim_index::{CompositeToken, PreliminaryIndex};
+use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
 
 pub fn pattern_scan(index: &PreliminaryIndex) {
     let mut docs_by_fingerprint = FnvHashMap::default();
@@ -21,7 +19,7 @@ pub fn pattern_scan(index: &PreliminaryIndex) {
 }
 
 /// Detect template columns in a group of documents
-pub fn detect_template_parts(docs: &[Vec<CompositeToken>]) {
+pub fn detect_template_parts(docs: &[PrelimDoc]) {
     let num_docs = docs.len();
     println!("Number of documents: {}", num_docs);
     // Create a pattern from the group of docs
@@ -33,36 +31,22 @@ pub fn detect_template_parts(docs: &[Vec<CompositeToken>]) {
     if num_docs == 0 {
         return;
     }
-    let num_tokens = docs[0]
-        .iter()
-        .filter(|token| !token.token_type().is_whitespace())
-        .count();
+    let num_tokens = docs[0].without_whitespace().count();
     columnar.resize(num_tokens + 1, Vec::new());
     // Make sure they all have the same number of tokens
-    for doc in docs {
-        if doc
-            .iter()
-            .filter(|token| !token.token_type().is_whitespace())
-            .count()
-            != num_tokens
-        {
-            panic!(
-                "Documents have different number of tokens: expected {}, got {}",
-                num_tokens,
-                doc.len()
-            );
-        }
-    }
+    //for doc in docs {
+    //if doc.without_whitespace().count() != num_tokens {
+    //panic!(
+    //"Documents have different number of tokens: expected {}, got {}",
+    //num_tokens,
+    //doc.without_whitespace().count()
+    //);
+    //}
+    //}
 
     for doc in docs {
-        let mut column_pos = 0;
-        for token in doc.iter() {
-            // skip whitespace tokens
-            if token.token_type().is_whitespace() {
-                continue;
-            }
-            columnar[column_pos].push(token.term_id());
-            column_pos += 1;
+        for (i, token) in doc.without_whitespace().enumerate() {
+            columnar[i].push(token.term_id());
         }
     }
     // 2. For each position, check how many distinct term_ids are there
@@ -76,10 +60,10 @@ pub fn detect_template_parts(docs: &[Vec<CompositeToken>]) {
                 .entry(*term_id)
                 .and_modify(|count| *count += 1)
                 .or_insert(1);
-            //if term_id_counts.len() > 10 {
-            //// Too many distinct term_ids, we can skip this position
-            //break;
-            //}
+            if term_id_counts.len() > 10 {
+                // Too many distinct term_ids, we can skip this position
+                break;
+            }
         }
         if term_id_counts.len() <= 10 {
             is_token_pos_template[i] = true;
@@ -97,7 +81,11 @@ pub fn detect_template_parts(docs: &[Vec<CompositeToken>]) {
             println!(
                 "Position {}: Not a template with {} distinct terms",
                 i,
-                columnar[i].iter().cloned().collect::<HashSet<u32>>().len()
+                columnar[i]
+                    .iter()
+                    .cloned()
+                    .collect::<FnvHashSet<u32>>()
+                    .len()
             );
         }
     }
