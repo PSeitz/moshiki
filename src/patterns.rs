@@ -49,8 +49,8 @@ pub fn detect_template_parts(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) {
         }
     }
 
-    let max_distinct_terms_threshold = 10; // A position is a template if it has <= 10 distinct terms
-    let min_most_frequent_term_percentage = 0.9; // Or if the most frequent term appears in >= 90% of documents
+    let max_distinct_terms_threshold = 5; // A position is a template if it has <= 5 distinct terms
+    let min_most_frequent_term_percentage = 0.99; // Or if the most frequent term appears in >= 99% of documents
 
     let mut is_token_pos_template = vec![false; num_tokens];
     for (i, term_id_counts) in column_term_id_counts.iter().enumerate() {
@@ -86,11 +86,19 @@ pub fn detect_template_parts(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) {
                 .map(|&id| {
                     let term = String::from_utf8_lossy(new_id_to_term_map[id as usize]).to_string();
                     let count = *column_term_id_counts[i].get(&id).unwrap_or(&0);
-                    let percentage = (count as f64 / num_docs as f64) * 100.0;
-                    format!("{}: {:.2}%", term, percentage)
+                    let total_terms_at_position: u32 = column_term_id_counts[i].values().sum();
+                    let percentage = (count as f64 / total_terms_at_position as f64) * 100.0;
+                    if term_ids.len() > 1 {
+                        format!("{}: {:.2}%", term, percentage)
+                    } else {
+                        term
+                    }
                 })
                 .collect();
-            println!("Position {}: Template with terms: {:?}", i, terms_with_percentages);
+            println!(
+                "Position {}: Template with terms: {:?}",
+                i, terms_with_percentages
+            );
         } else {
             let num_distinct_terms = column_term_id_counts[i].len();
             let mut max_term_count = 0;
@@ -102,9 +110,7 @@ pub fn detect_template_parts(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) {
             let most_frequent_term_percentage = max_term_count as f64 / num_docs as f64;
             println!(
                 "Position {}: Not a template. Distinct terms: {}, Most frequent term percentage: {:.2}",
-                i,
-                num_distinct_terms,
-                most_frequent_term_percentage
+                i, num_distinct_terms, most_frequent_term_percentage
             );
         }
     }
