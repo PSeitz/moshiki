@@ -1,4 +1,4 @@
-use std::{collections::HashSet, io::BufRead};
+use std::io::BufRead;
 
 use moshiki::{patterns::pattern_scan, prelim_index::preliminary_index};
 
@@ -23,12 +23,8 @@ fn main() {
     let preliminary_index = preliminary_index(lines);
     pattern_scan(&preliminary_index);
 
-    let fingerprints: HashSet<u64> = preliminary_index
-        .preliminary_docs
-        .keys()
-        .cloned()
-        .collect();
-    println!("Num Fingerprints: {}", fingerprints.len());
+    let num_unique_token_counts = preliminary_index.preliminary_docs.len();
+    println!("Num Unique Token Counts: {}", num_unique_token_counts);
     println!(
         "Throughput: {:.2} MB/s",
         (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64()

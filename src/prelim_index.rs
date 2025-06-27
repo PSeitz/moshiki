@@ -1,15 +1,13 @@
-use fnv::FnvHashMap;
 use stacker::ArenaHashMap;
 
 use crate::{
-    Token,
-    fingerprint::fingerprint,
     tokenizer::{TokenType, Tokenizer},
+    Token,
 };
 
 pub struct PreliminaryIndex {
     pub term_hash_map: ArenaHashMap,
-    pub preliminary_docs: FnvHashMap<u64, Vec<PrelimDoc>>,
+    pub preliminary_docs: Vec<Vec<PrelimDoc>>,
 }
 
 // A 32-bit composite: top 4 bits store token type, lower 28 bits store term ID
@@ -48,7 +46,7 @@ impl From<(TokenType, u32)> for CompositeToken {
 
 pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryIndex {
     let mut term_hash_map = ArenaHashMap::with_capacity(4);
-    let mut preliminary_docs = FnvHashMap::default();
+    let mut preliminary_docs: Vec<Vec<PrelimDoc>> = Vec::new();
 
     for line in lines {
         let mut token_type_with_term_ids: Vec<CompositeToken> = Vec::with_capacity(32);
@@ -66,6 +64,8 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
                         term_id = opt.unwrap_or(next_id);
                         term_id
                     });
+                    // Only map to ordinal ID after the term_hash_map is fully populated
+                    // For now, use the original term_id
                     token_type_with_term_ids.push((token.token_type(), term_id).into());
                 }
                 // Term id for whitespace is the number of whitespace characters
@@ -96,12 +96,43 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         //}
 
         let prelim_doc = PrelimDoc(token_type_with_term_ids.clone());
-        let fingerprint = fingerprint(&prelim_doc);
+        let num_tokens = prelim_doc.without_whitespace().count();
 
-        preliminary_docs
-            .entry(fingerprint)
-            .or_insert_with(Vec::new)
-            .push(prelim_doc);
+        if num_tokens >= preliminary_docs.len() {
+            preliminary_docs.resize(num_tokens + 1, Vec::new());
+        }
+        preliminary_docs[num_tokens].push(prelim_doc);
+    }
+
+    // Populate old_to_new_id_map and term_id_map after term_hash_map is fully built
+    let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
+    let mut max_old_id = 0;
+    for (term_bytes, old_id_addr) in term_hash_map.iter() {
+        let old_id: u32 = term_hash_map.read(old_id_addr);
+        if old_id > max_old_id {
+            max_old_id = old_id;
+        }
+        sorted_terms.push((term_bytes, old_id));
+    }
+    sorted_terms.sort_by(|(term_a, _), (term_b, _)| term_a.cmp(term_b));
+
+    let mut old_to_new_id_map: Vec<u32> = vec![0; (max_old_id + 1) as usize];
+    for (new_id, (_, old_id)) in sorted_terms.into_iter().enumerate() {
+        old_to_new_id_map[old_id as usize] = new_id as u32;
+    }
+
+    // Now, iterate through preliminary_docs and update CompositeToken term_ids
+    for docs_vec in preliminary_docs.iter_mut() {
+        for doc in docs_vec.iter_mut() {
+            for composite_token in doc.0.iter_mut() {
+                if !composite_token.token_type().is_whitespace() {
+                    let old_term_id = composite_token.term_id();
+                    let ordinal_term_id = old_to_new_id_map[old_term_id as usize];
+                    *composite_token =
+                        CompositeToken::new(composite_token.token_type(), ordinal_term_id);
+                }
+            }
+        }
     }
 
     PreliminaryIndex {
@@ -109,8 +140,6 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         preliminary_docs,
     }
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct PrelimDoc(pub Vec<CompositeToken>);

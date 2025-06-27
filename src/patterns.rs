@@ -4,9 +4,11 @@ use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
 
 pub fn pattern_scan(index: &PreliminaryIndex) {
     // 2. For each fingerprint, create a pattern
-    for docs in index.preliminary_docs.values() {
-        detect_template_parts(docs);
-        // Here you can do something with the pattern, like printing or storing it
+    for docs_vec in index.preliminary_docs.iter() {
+        if docs_vec.is_empty() {
+            continue;
+        }
+        detect_template_parts(docs_vec);
     }
 }
 
