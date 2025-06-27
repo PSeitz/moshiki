@@ -8,7 +8,7 @@ use crate::{
 
 pub struct PreliminaryIndex {
     pub term_hash_map: ArenaHashMap,
-    pub preliminary_docs: Vec<PreliminaryDoc>,
+    pub preliminary_docs: Vec<FingerprintedPrelimDoc>,
 }
 
 // A 32-bit composite: top 4 bits store token type, lower 28 bits store term ID
@@ -97,7 +97,7 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         let prelim_doc = PrelimDoc(token_type_with_term_ids.clone());
         let fingerprint = fingerprint(&prelim_doc);
 
-        preliminary_docs.push(PreliminaryDoc::new(prelim_doc.0, fingerprint));
+        preliminary_docs.push(FingerprintedPrelimDoc::new(prelim_doc.0, fingerprint));
     }
 
     PreliminaryIndex {
@@ -107,14 +107,14 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
 }
 
 #[derive(Debug, Clone)]
-pub struct PreliminaryDoc {
+pub struct FingerprintedPrelimDoc {
     pub token_type_with_term_ids: PrelimDoc,
     pub fingerprint: u64,
 }
 
-impl PreliminaryDoc {
+impl FingerprintedPrelimDoc {
     fn new(token_type_with_term_ids: Vec<CompositeToken>, fingerprint: u64) -> Self {
-        PreliminaryDoc {
+        FingerprintedPrelimDoc {
             token_type_with_term_ids: PrelimDoc(token_type_with_term_ids),
             fingerprint,
         }

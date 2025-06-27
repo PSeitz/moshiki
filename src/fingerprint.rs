@@ -2,7 +2,7 @@ use std::hash::{Hash, Hasher};
 
 use fxhash::FxHasher;
 
-use crate::{prelim_index::PrelimDoc, Token};
+use crate::{Token, prelim_index::PrelimDoc};
 
 /// This function generates a fingerprint for an iterator of token types.
 pub fn fingerprint2(prelim_doc: &PrelimDoc) -> u64 {
@@ -11,8 +11,11 @@ pub fn fingerprint2(prelim_doc: &PrelimDoc) -> u64 {
     let mut fingerprint = 0;
     let mut current_pos = 0;
     let max_tokens = 64 / num_bits_per_type as usize;
-    for token_type in prelim_doc.without_whitespace().map(|token| token.token_type()).take(max_tokens) {
-        
+    for token_type in prelim_doc
+        .without_whitespace()
+        .map(|token| token.token_type())
+        .take(max_tokens)
+    {
         fingerprint |= (token_type.0 as u64) << current_pos;
         current_pos += num_bits_per_type;
     }
@@ -33,8 +36,11 @@ pub fn fingerprint(prelim_doc: &PrelimDoc) -> u64 {
 }
 #[cfg(test)]
 mod test {
-    use crate::{prelim_index::{CompositeToken, PrelimDoc}, Token};
     use super::{fingerprint, fingerprint2};
+    use crate::{
+        Token,
+        prelim_index::{CompositeToken, PrelimDoc},
+    };
 
     fn create_prelim_doc(tokens: Vec<Token>) -> PrelimDoc {
         let mut composite_tokens = Vec::new();
@@ -52,10 +58,7 @@ mod test {
         let bits = Token::type_id_num_bits() as u64;
         let expected = 2 | (2 << bits);
 
-        assert_eq!(
-            fingerprint2(&prelim_doc),
-            expected
-        );
+        assert_eq!(fingerprint2(&prelim_doc), expected);
     }
 
     #[test]
