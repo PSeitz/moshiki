@@ -1,9 +1,9 @@
 use stacker::ArenaHashMap;
 
 use crate::{
+    Token,
     fingerprint::fingerprint,
     tokenizer::{TokenType, Tokenizer},
-    Token,
 };
 
 pub struct PreliminaryIndex {
@@ -13,6 +13,7 @@ pub struct PreliminaryIndex {
 
 // A 32-bit composite: top 4 bits store token type, lower 28 bits store term ID
 #[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompositeToken(u32);
 
 impl CompositeToken {
@@ -64,14 +65,35 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
                         term_id = opt.unwrap_or(next_id);
                         term_id
                     });
-                    token_type_with_term_ids.push((token.type_id(), term_id).into());
+                    token_type_with_term_ids.push((token.token_type(), term_id).into());
                 }
                 // Term id for whitespace is the number of whitespace characters
                 Token::Whitespace(num) => {
-                    token_type_with_term_ids.push((token.type_id(), num as u32).into());
+                    token_type_with_term_ids.push((token.token_type(), num as u32).into());
                 }
             }
         }
+
+        // Check wihtout whitespace tokens
+        // TODO: This happens very often with the current tokenizer
+        //if token_type_with_term_ids
+        //.iter()
+        //.filter(|comp_token| !comp_token.token_type().is_whitespace())
+        //.count()
+        //> 32
+        //{
+        //// Print the log line
+        //println!("Warning: line exceeds 32 tokens: \n{}", &line);
+        //let tokens = Tokenizer::new(&line).collect::<Vec<_>>();
+        //println!(
+        //"{:?}",
+        //tokens
+        //.iter()
+        //.filter(|token| !token.token_type().is_whitespace())
+        //.collect::<Vec<_>>()
+        //);
+        //}
+
         let fingerprint = fingerprint(
             token_type_with_term_ids
                 .iter()
@@ -87,6 +109,7 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct PreliminaryDoc {
     pub token_type_with_term_ids: Vec<CompositeToken>,
     pub fingerprint: u64,

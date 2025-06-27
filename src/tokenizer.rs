@@ -9,6 +9,19 @@ pub fn tokenize(input: &str) -> Vec<Token> {
     Tokenizer::new(input).collect()
 }
 
+pub fn reconstruct_from_tokens<'a>(tokens: impl Iterator<Item = Token<'a>>) -> String {
+    tokens
+        .map(|t| match t {
+            Token::IPv4(s)
+            | Token::Number(s)
+            | Token::Uuid(s)
+            | Token::Word(s)
+            | Token::Punctuation(s) => s.to_string(),
+            Token::Whitespace(s) => " ".repeat(s),
+        })
+        .collect()
+}
+
 /// Typed token kinds with zero allocations
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token<'a> {
@@ -22,6 +35,12 @@ pub enum Token<'a> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct TokenType(pub u8);
+impl TokenType {
+    pub fn is_whitespace(&self) -> bool {
+        self.0 == 6 // Whitespace token type ID
+    }
+}
+
 impl From<u8> for TokenType {
     #[inline]
     fn from(val: u8) -> Self {
@@ -32,20 +51,23 @@ impl From<u8> for TokenType {
 /// Retrun an ID for each token type
 impl<'a> Token<'a> {
     #[inline]
-    pub fn type_id(&self) -> TokenType {
+    /// They start from 1, so we can use them for the fingerprint and differentiate from
+    /// doesn't exist token type (0).
+    pub fn token_type(&self) -> TokenType {
         let val = match self {
-            Token::Word(_) => 0u8,
-            Token::Number(_) => 1,
-            Token::IPv4(_) => 2,
-            Token::Uuid(_) => 3,
-            Token::Punctuation(_) => 4,
-            Token::Whitespace(_) => 5,
+            Token::Word(_) => 1u8,
+            Token::Number(_) => 2,
+            Token::IPv4(_) => 3,
+            Token::Uuid(_) => 4,
+            Token::Punctuation(_) => 5,
+            Token::Whitespace(_) => 6,
         };
         val.into()
     }
+
     #[inline]
     pub const fn type_id_num_bits() -> u8 {
-        3 // 6 types, fits in 3 bits
+        3 // 6 token types fit in 3 bits (2^3 = 8)
     }
     #[inline]
     pub fn as_str(&self) -> Option<&str> {
@@ -183,6 +205,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn check_is_whitespace() {
+        assert!(TokenType(6).is_whitespace());
+    }
+
+    #[test]
     fn test_tokenizer_simple() {
         let line = "src: /10.10.34.30:33078, dest: /10.10.34.11:50010";
         let toks: Vec<_> = tokenize(line);
@@ -242,5 +269,14 @@ mod tests {
             })
             .collect();
         assert_eq!(reconstructed, line);
+    }
+
+    #[test]
+    fn test_tokenizer_log_line() {
+        let line = "src: /10.10.34.11:52611, dest: /10.10.34.42:50010, bytes: 162571, op: HDFS_WRITE, cliID: DFSClient_NONMAPREDUCE_-941064892_1, offset: 0, srvID: ac6cb715-a2bc-4644-aaa4-10fcbd1c390e, blockid: BP-108841162-10.10.34.11-1440074360971:blk_1073854279_113455, duration: 3374681";
+        let toks: Vec<_> = tokenize(line);
+
+        let expected = vec![Token::Word("PacketResponder")];
+        assert_eq!(toks, expected);
     }
 }

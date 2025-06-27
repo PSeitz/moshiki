@@ -1,6 +1,6 @@
 use std::{collections::HashSet, io::BufRead};
 
-use moshiki::prelim_index::preliminary_index;
+use moshiki::{patterns::pattern_scan, prelim_index::preliminary_index};
 
 fn main() {
     // First param is the NDJSON
@@ -21,6 +21,7 @@ fn main() {
         .lines()
         .map(|line| line.expect("Failed to read line"));
     let preliminary_index = preliminary_index(lines);
+    pattern_scan(&preliminary_index);
 
     let fingerprints: HashSet<u64> = preliminary_index
         .preliminary_docs
