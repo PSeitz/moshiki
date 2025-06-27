@@ -25,8 +25,8 @@ fn main() {
 
     let fingerprints: HashSet<u64> = preliminary_index
         .preliminary_docs
-        .iter()
-        .map(|doc| doc.fingerprint)
+        .keys()
+        .cloned()
         .collect();
     println!("Num Fingerprints: {}", fingerprints.len());
     println!(

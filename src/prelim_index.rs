@@ -1,3 +1,4 @@
+use fnv::FnvHashMap;
 use stacker::ArenaHashMap;
 
 use crate::{
@@ -8,7 +9,7 @@ use crate::{
 
 pub struct PreliminaryIndex {
     pub term_hash_map: ArenaHashMap,
-    pub preliminary_docs: Vec<FingerprintedPrelimDoc>,
+    pub preliminary_docs: FnvHashMap<u64, Vec<PrelimDoc>>,
 }
 
 // A 32-bit composite: top 4 bits store token type, lower 28 bits store term ID
@@ -47,7 +48,7 @@ impl From<(TokenType, u32)> for CompositeToken {
 
 pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryIndex {
     let mut term_hash_map = ArenaHashMap::with_capacity(4);
-    let mut preliminary_docs = Vec::new();
+    let mut preliminary_docs = FnvHashMap::default();
 
     for line in lines {
         let mut token_type_with_term_ids: Vec<CompositeToken> = Vec::with_capacity(32);
@@ -97,7 +98,10 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         let prelim_doc = PrelimDoc(token_type_with_term_ids.clone());
         let fingerprint = fingerprint(&prelim_doc);
 
-        preliminary_docs.push(FingerprintedPrelimDoc::new(prelim_doc.0, fingerprint));
+        preliminary_docs
+            .entry(fingerprint)
+            .or_insert_with(Vec::new)
+            .push(prelim_doc);
     }
 
     PreliminaryIndex {
@@ -106,20 +110,7 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FingerprintedPrelimDoc {
-    pub token_type_with_term_ids: PrelimDoc,
-    pub fingerprint: u64,
-}
 
-impl FingerprintedPrelimDoc {
-    fn new(token_type_with_term_ids: Vec<CompositeToken>, fingerprint: u64) -> Self {
-        FingerprintedPrelimDoc {
-            token_type_with_term_ids: PrelimDoc(token_type_with_term_ids),
-            fingerprint,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct PrelimDoc(pub Vec<CompositeToken>);

@@ -3,16 +3,8 @@ use fnv::FnvHashMap;
 use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
 
 pub fn pattern_scan(index: &PreliminaryIndex) {
-    let mut docs_by_fingerprint = FnvHashMap::default();
-    // 1. Group by fingerprint
-    for doc in &index.preliminary_docs {
-        docs_by_fingerprint
-            .entry(doc.fingerprint)
-            .or_insert_with(Vec::new)
-            .push(doc.token_type_with_term_ids.clone());
-    }
     // 2. For each fingerprint, create a pattern
-    for docs in docs_by_fingerprint.values() {
+    for docs in index.preliminary_docs.values() {
         detect_template_parts(docs);
         // Here you can do something with the pattern, like printing or storing it
     }
