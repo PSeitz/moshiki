@@ -1,8 +1,8 @@
 use stacker::ArenaHashMap;
 
 use crate::{
-    tokenizer::{TokenType, Tokenizer},
     Token,
+    tokenizer::{TokenType, Tokenizer},
 };
 
 pub struct PreliminaryIndex {
@@ -104,14 +104,20 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         preliminary_docs[num_tokens].push(prelim_doc);
     }
 
-    // Populate old_to_new_id_map and term_id_map after term_hash_map is fully built
+    //let old_to_new_id_map = generate_term_id_mapping(&term_hash_map);
+    //remap_term_ids(&mut preliminary_docs, &old_to_new_id_map);
+
+    PreliminaryIndex {
+        term_hash_map,
+        preliminary_docs,
+    }
+}
+
+fn generate_term_id_mapping(term_hash_map: &ArenaHashMap) -> Vec<u32> {
     let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
-    let mut max_old_id = 0;
+    let max_old_id = term_hash_map.len() as u32;
     for (term_bytes, old_id_addr) in term_hash_map.iter() {
         let old_id: u32 = term_hash_map.read(old_id_addr);
-        if old_id > max_old_id {
-            max_old_id = old_id;
-        }
         sorted_terms.push((term_bytes, old_id));
     }
     sorted_terms.sort_by(|(term_a, _), (term_b, _)| term_a.cmp(term_b));
@@ -120,8 +126,10 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
     for (new_id, (_, old_id)) in sorted_terms.into_iter().enumerate() {
         old_to_new_id_map[old_id as usize] = new_id as u32;
     }
+    old_to_new_id_map
+}
 
-    // Now, iterate through preliminary_docs and update CompositeToken term_ids
+fn remap_term_ids(preliminary_docs: &mut [Vec<PrelimDoc>], old_to_new_id_map: &[u32]) {
     for docs_vec in preliminary_docs.iter_mut() {
         for doc in docs_vec.iter_mut() {
             for composite_token in doc.0.iter_mut() {
@@ -133,11 +141,6 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
                 }
             }
         }
-    }
-
-    PreliminaryIndex {
-        term_hash_map,
-        preliminary_docs,
     }
 }
 

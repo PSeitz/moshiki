@@ -3,24 +3,26 @@ use fnv::FnvHashMap;
 use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
 
 pub fn pattern_scan(index: &PreliminaryIndex) {
-    // 2. For each fingerprint, create a pattern
+    let mut term_id_to_term_map: Vec<&[u8]> = vec![&[]; index.term_hash_map.len()];
+    for (term_bytes, old_id_addr) in index.term_hash_map.iter() {
+        let old_id: u32 = index.term_hash_map.read(old_id_addr);
+        term_id_to_term_map[old_id as usize] = term_bytes;
+    }
+
     for docs_vec in index.preliminary_docs.iter() {
-        if docs_vec.is_empty() {
-            continue;
-        }
-        detect_template_parts(docs_vec);
+        detect_template_parts(docs_vec, &term_id_to_term_map);
     }
 }
 
 /// Detect template columns in a group of documents
-pub fn detect_template_parts(docs: &[PrelimDoc]) {
+pub fn detect_template_parts(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) {
     let num_docs = docs.len();
     println!("Number of documents: {}", num_docs);
     // Create a pattern from the group of docs
     // For each position (ordinal in Vec<CompositeToken>) we check how many distinct term_ids are there
     // Low cardinality terms can be part of the pattern
     // then we only need to store the term_ids for the high cardinality terms in a columnar storage
-    // 1. Convert into a columnar representationlet mut pattern = String::new();
+    // 1. Convert into a columnar representation
     if num_docs == 0 {
         return;
     }
@@ -56,8 +58,12 @@ pub fn detect_template_parts(docs: &[PrelimDoc]) {
     for (i, is_template) in is_token_pos_template.iter().enumerate() {
         if *is_template {
             num_templates += 1;
-            //let term_ids: HashSet<u32> = columnar[i].iter().cloned().collect();
-            //println!("Position {}: Template with terms: {:?}", i, term_ids);
+            let term_ids: Vec<u32> = column_term_id_counts[i].keys().cloned().collect();
+            let terms: Vec<String> = term_ids
+                .iter()
+                .map(|&id| String::from_utf8_lossy(new_id_to_term_map[id as usize]).to_string())
+                .collect();
+            println!("Position {}: Template with terms: {:?}", i, terms);
         } else {
             println!(
                 "Position {}: Not a template with {} distinct terms",
