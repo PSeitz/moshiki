@@ -10,6 +10,9 @@ pub fn pattern_scan(index: &PreliminaryIndex) {
     }
 
     for docs_vec in index.preliminary_docs.iter() {
+        if docs_vec.is_empty() {
+            continue;
+        }
         detect_template_parts(docs_vec, &term_id_to_term_map);
     }
 }
@@ -46,11 +49,30 @@ pub fn detect_template_parts(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) {
         }
     }
 
+    let max_distinct_terms_threshold = 10; // A position is a template if it has <= 10 distinct terms
+    let min_most_frequent_term_percentage = 0.9; // Or if the most frequent term appears in >= 90% of documents
+
     let mut is_token_pos_template = vec![false; num_tokens];
     for (i, term_id_counts) in column_term_id_counts.iter().enumerate() {
-        if term_id_counts.len() <= 10 {
-            is_token_pos_template[i] = true;
+        let num_distinct_terms = term_id_counts.len();
+        let mut is_template = false;
+
+        if num_distinct_terms <= max_distinct_terms_threshold {
+            is_template = true;
+        } else {
+            // If there are too many distinct terms, check if one term is overwhelmingly frequent
+            let mut max_term_count = 0;
+            for &count in term_id_counts.values() {
+                if count > max_term_count {
+                    max_term_count = count;
+                }
+            }
+            let most_frequent_term_percentage = max_term_count as f64 / num_docs as f64;
+            if most_frequent_term_percentage >= min_most_frequent_term_percentage {
+                is_template = true;
+            }
         }
+        is_token_pos_template[i] = is_template;
     }
     // Print how many distinct term_ids are there for each position
     // Print the template positions
@@ -63,12 +85,30 @@ pub fn detect_template_parts(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) {
                 .iter()
                 .map(|&id| String::from_utf8_lossy(new_id_to_term_map[id as usize]).to_string())
                 .collect();
-            println!("Position {}: Template with terms: {:?}", i, terms);
+            let terms_with_percentages: Vec<String> = term_ids
+                .iter()
+                .map(|&id| {
+                    let term = String::from_utf8_lossy(new_id_to_term_map[id as usize]).to_string();
+                    let count = *column_term_id_counts[i].get(&id).unwrap_or(&0);
+                    let percentage = (count as f64 / num_docs as f64) * 100.0;
+                    format!("{}: {:.2}%", term, percentage)
+                })
+                .collect();
+            println!("Position {}: Template with terms: {:?}", i, terms_with_percentages);
         } else {
+            let num_distinct_terms = column_term_id_counts[i].len();
+            let mut max_term_count = 0;
+            for &count in column_term_id_counts[i].values() {
+                if count > max_term_count {
+                    max_term_count = count;
+                }
+            }
+            let most_frequent_term_percentage = max_term_count as f64 / num_docs as f64;
             println!(
-                "Position {}: Not a template with {} distinct terms",
+                "Position {}: Not a template. Distinct terms: {}, Most frequent term percentage: {:.2}",
                 i,
-                column_term_id_counts[i].len()
+                num_distinct_terms,
+                most_frequent_term_percentage
             );
         }
     }
