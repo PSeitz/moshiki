@@ -81,10 +81,6 @@ pub fn detect_template_parts(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) {
         if *is_template {
             num_templates += 1;
             let term_ids: Vec<u32> = column_term_id_counts[i].keys().cloned().collect();
-            let terms: Vec<String> = term_ids
-                .iter()
-                .map(|&id| String::from_utf8_lossy(new_id_to_term_map[id as usize]).to_string())
-                .collect();
             let terms_with_percentages: Vec<String> = term_ids
                 .iter()
                 .map(|&id| {
