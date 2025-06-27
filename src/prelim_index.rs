@@ -94,13 +94,10 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         //);
         //}
 
-        let fingerprint = fingerprint(
-            PrelimDoc(token_type_with_term_ids.clone())
-                .without_whitespace()
-                .map(|comp_token| comp_token.token_type()),
-        );
+        let prelim_doc = PrelimDoc(token_type_with_term_ids.clone());
+        let fingerprint = fingerprint(&prelim_doc);
 
-        preliminary_docs.push(PreliminaryDoc::new(token_type_with_term_ids, fingerprint));
+        preliminary_docs.push(PreliminaryDoc::new(prelim_doc.0, fingerprint));
     }
 
     PreliminaryIndex {
