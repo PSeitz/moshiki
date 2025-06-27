@@ -1,4 +1,4 @@
-use fnv::{FnvHashMap, FnvHashSet};
+use fnv::FnvHashMap;
 
 use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
 
@@ -27,44 +27,31 @@ pub fn detect_template_parts(docs: &[PrelimDoc]) {
     // Low cardinality terms can be part of the pattern
     // then we only need to store the term_ids for the high cardinality terms in a columnar storage
     // 1. Convert into a columnar representationlet mut pattern = String::new();
-    let mut columnar: Vec<Vec<u32>> = Vec::new();
     if num_docs == 0 {
         return;
     }
     let num_tokens = docs[0].without_whitespace().count();
-    columnar.resize(num_tokens + 1, Vec::new());
-    // Make sure they all have the same number of tokens
-    //for doc in docs {
-    //if doc.without_whitespace().count() != num_tokens {
-    //panic!(
-    //"Documents have different number of tokens: expected {}, got {}",
-    //num_tokens,
-    //doc.without_whitespace().count()
-    //);
-    //}
-    //}
-
-    for doc in docs {
-        for (i, token) in doc.without_whitespace().enumerate() {
-            columnar[i].push(token.term_id());
-        }
-    }
     // 2. For each position, check how many distinct term_ids are there
     // We can early exit if we find a position with too many distinct term_ids
 
-    let mut is_token_pos_template = vec![false; num_tokens + 1];
-    for (i, column) in columnar.iter().enumerate() {
-        let mut term_id_counts: FnvHashMap<u32, u32> = FnvHashMap::default();
-        for term_id in column {
-            term_id_counts
-                .entry(*term_id)
+    let mut column_term_id_counts: Vec<FnvHashMap<u32, u32>> =
+        vec![FnvHashMap::default(); num_tokens];
+
+    for doc in docs {
+        for (i, token) in doc.without_whitespace().enumerate() {
+            if column_term_id_counts[i].len() > 10 {
+                // If we already have too many distinct term_ids, we can skip this position
+                continue;
+            }
+            column_term_id_counts[i]
+                .entry(token.term_id())
                 .and_modify(|count| *count += 1)
                 .or_insert(1);
-            if term_id_counts.len() > 10 {
-                // Too many distinct term_ids, we can skip this position
-                break;
-            }
         }
+    }
+
+    let mut is_token_pos_template = vec![false; num_tokens];
+    for (i, term_id_counts) in column_term_id_counts.iter().enumerate() {
         if term_id_counts.len() <= 10 {
             is_token_pos_template[i] = true;
         }
@@ -81,11 +68,7 @@ pub fn detect_template_parts(docs: &[PrelimDoc]) {
             println!(
                 "Position {}: Not a template with {} distinct terms",
                 i,
-                columnar[i]
-                    .iter()
-                    .cloned()
-                    .collect::<FnvHashSet<u32>>()
-                    .len()
+                column_term_id_counts[i].len()
             );
         }
     }
