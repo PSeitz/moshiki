@@ -46,7 +46,7 @@ pub struct TemplatedDocument {
     pub placeholder_values: Vec<u32>,
 }
 
-pub fn pattern_scan(index: &PreliminaryIndex) -> Vec<TemplateAndDocs> {
+pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<TemplateAndDocs> {
     let mut term_id_to_term_map: Vec<&[u8]> = vec![&[]; index.term_hash_map.len()];
     for (term_bytes, old_id_addr) in index.term_hash_map.iter() {
         let old_id: u32 = index.term_hash_map.read(old_id_addr);
@@ -60,8 +60,12 @@ pub fn pattern_scan(index: &PreliminaryIndex) -> Vec<TemplateAndDocs> {
         if docs_vec.is_empty() {
             continue;
         }
-        let new_template_and_docs =
-            split_and_detect_templates(docs_vec, &term_id_to_term_map, &mut next_template_id);
+        let new_template_and_docs = split_and_detect_templates(
+            docs_vec,
+            &term_id_to_term_map,
+            &mut next_template_id,
+            old_to_new_id_map,
+        );
         template_and_docs.extend(new_template_and_docs);
     }
     template_and_docs
@@ -71,6 +75,7 @@ fn split_and_detect_templates(
     docs: &[PrelimDoc],
     new_id_to_term_map: &[&[u8]],
     next_template_id: &mut TemplateIdProvider,
+    old_to_new_id_map: &[u32],
 ) -> Vec<TemplateAndDocs> {
     let num_docs = docs.len();
     if num_docs == 0 {
@@ -105,13 +110,14 @@ fn split_and_detect_templates(
             new_id_to_term_map,
             &column_term_id_counts,
             next_template_id,
+            old_to_new_id_map,
         )]
     } else {
         let mut sub_groups: HashMap<Vec<u32>, Vec<PrelimDoc>> = HashMap::new();
         for doc in docs {
             let key: Vec<u32> = variant_positions
                 .iter()
-                .map(|&i| doc.iter().nth(i).unwrap().term_id())
+                .map(|&i| doc.0[i].term_id())
                 .collect();
             sub_groups.entry(key).or_default().push(doc.clone());
         }
@@ -134,6 +140,7 @@ fn split_and_detect_templates(
                 new_id_to_term_map,
                 &sub_group_column_term_id_counts,
                 next_template_id,
+                old_to_new_id_map,
             );
             templates_and_docs.push(new_template_and_docs);
         }
@@ -146,6 +153,7 @@ fn detect_template(
     new_id_to_term_map: &[&[u8]],
     column_term_id_counts: &[FnvHashMap<u32, u32>],
     template_id: &mut TemplateIdProvider,
+    old_to_new_id_map: &[u32],
 ) -> TemplateAndDocs {
     let num_tokens = docs[0].iter().count();
 
@@ -169,7 +177,7 @@ fn detect_template(
             doc.iter()
                 .enumerate()
                 .filter_map(|(i, token)| match template_parts[i] {
-                    TemplatePart::Placeholder => Some(token.term_id()),
+                    TemplatePart::Placeholder => Some(old_to_new_id_map[token.term_id() as usize]),
                     _ => None,
                 });
         templated_docs.extend(placeholder_values);

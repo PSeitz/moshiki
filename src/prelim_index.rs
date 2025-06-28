@@ -1,13 +1,12 @@
-use fnv::FnvHasher;
+use fnv::{FnvHashMap, FnvHasher};
 use stacker::ArenaHashMap;
-use std::collections::HashMap;
 use std::hash::Hasher;
 
 use crate::tokenizer::{Token, TokenType, Tokenizer};
 
 pub struct PreliminaryIndex {
     pub term_hash_map: ArenaHashMap,
-    pub preliminary_docs: HashMap<u64, Vec<PrelimDoc>>,
+    pub preliminary_docs: FnvHashMap<u64, Vec<PrelimDoc>>,
 }
 
 // A 32-bit composite: top 4 bits store token type, lower 28 bits store term ID
@@ -52,7 +51,7 @@ impl From<(TokenType, u32)> for CompositeToken {
 
 pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryIndex {
     let mut term_hash_map = ArenaHashMap::with_capacity(4);
-    let mut preliminary_docs: HashMap<u64, Vec<PrelimDoc>> = HashMap::new();
+    let mut preliminary_docs: FnvHashMap<u64, Vec<PrelimDoc>> = FnvHashMap::default();
 
     for line in lines {
         let mut token_type_with_term_ids: Vec<CompositeToken> = Vec::with_capacity(32);

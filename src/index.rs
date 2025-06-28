@@ -19,11 +19,11 @@ impl IndexWriter {
 
     pub fn index(&self, lines: impl Iterator<Item = String>) {
         let preliminary_index = preliminary_index(lines);
-        let _old_to_new_id_map = self
+        let old_to_new_id_map = self
             .write_dictionary_and_generate_mapping(&preliminary_index.term_hash_map)
             .unwrap();
 
-        let templates_and_docs = pattern_scan(&preliminary_index);
+        let templates_and_docs = pattern_scan(&preliminary_index, &old_to_new_id_map);
 
         for template_and_doc in templates_and_docs {
             let mut byte_buffer = Vec::new();
