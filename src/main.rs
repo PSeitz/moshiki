@@ -21,10 +21,13 @@ fn main() {
         .lines()
         .map(|line| line.expect("Failed to read line"));
     let preliminary_index = preliminary_index(lines);
-    let (templates, templated_docs) = pattern_scan(&preliminary_index);
+    let templates_and_docs = pattern_scan(&preliminary_index);
 
-    for (i, template) in templates.iter().enumerate() {
-        println!("Template {}: {:?}", i, template);
+    for (i, template_and_docs) in templates_and_docs.iter().enumerate() {
+        println!(
+            "Template {} {}:  template_and_docs.template {:?}",
+            i, template_and_docs.template.template_id, template_and_docs.template
+        );
     }
 
     //for (i, doc) in templated_docs.iter().enumerate() {
