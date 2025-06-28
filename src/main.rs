@@ -1,15 +1,24 @@
+use std::fs::{self};
 use std::io::BufRead;
+use std::path::Path;
 
-use moshiki::{patterns::pattern_scan, prelim_index::preliminary_index};
+use moshiki::index::IndexWriter;
 
 fn main() {
     // First param is the NDJSON
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: {} <ndjson_file>", args[0]);
+    if args.len() < 3 {
+        eprintln!("Usage: {} <ndjson_file> <output_folder>", args[0]);
         std::process::exit(1);
     }
     let ndjson_file = &args[1];
+    let output_folder = &args[2];
+
+    // Create the output folder if it doesn't exist
+    if !Path::new(output_folder).exists() {
+        fs::create_dir_all(output_folder).expect("Failed to create output folder");
+    }
+
     println!("Reading NDJSON file: {}", ndjson_file);
     let file_size = std::fs::metadata(ndjson_file)
         .expect("Failed to get file metadata")
@@ -20,19 +29,10 @@ fn main() {
     let lines = reader
         .lines()
         .map(|line| line.expect("Failed to read line"));
-    let preliminary_index = preliminary_index(lines);
-    let templates_and_docs = pattern_scan(&preliminary_index);
 
-    for (i, template_and_docs) in templates_and_docs.iter().enumerate() {
-        println!(
-            "Template {} {}:  template_and_docs.template {:?}",
-            i, template_and_docs.template.template_id, template_and_docs.template
-        );
-    }
+    let writer = IndexWriter::new(output_folder.to_string());
+    writer.index(lines);
 
-    //for (i, doc) in templated_docs.iter().enumerate() {
-    //println!("Templated Doc {}: {:?}", i, doc);
-    //}
     println!(
         "Throughput: {:.2} MB/s",
         (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64()

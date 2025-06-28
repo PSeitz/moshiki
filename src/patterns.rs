@@ -7,7 +7,7 @@ use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
 #[derive(Debug)]
 pub struct TemplateAndDocs {
     pub template: Template,
-    pub templated_docs: Vec<u32>,
+    pub docs_term_ids: Vec<u32>,
 }
 
 struct TemplateIdProvider {
@@ -181,6 +181,6 @@ fn detect_template(
             template_id: template_id.next_id(),
             parts: template_parts,
         },
-        templated_docs,
+        docs_term_ids: templated_docs,
     }
 }
