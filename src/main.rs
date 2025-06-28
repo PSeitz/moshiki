@@ -23,8 +23,13 @@ fn main() {
     let preliminary_index = preliminary_index(lines);
     let (templates, templated_docs) = pattern_scan(&preliminary_index);
 
-    println!("Num Unique Templates: {}", templates.len());
-    println!("Num Templated Docs: {}", templated_docs.len());
+    for (i, template) in templates.iter().enumerate() {
+        println!("Template {}: {:?}", i, template);
+    }
+
+    for (i, doc) in templated_docs.iter().enumerate() {
+        println!("Templated Doc {}: {:?}", i, doc);
+    }
     println!(
         "Throughput: {:.2} MB/s",
         (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64()

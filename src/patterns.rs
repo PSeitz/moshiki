@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use fnv::FnvHashMap;
 
-use crate::prelim_index::{CompositeToken, PrelimDoc, PreliminaryIndex};
+use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
 
 #[derive(Debug)]
 pub struct Template {
@@ -11,7 +11,7 @@ pub struct Template {
 
 #[derive(Debug)]
 pub enum TemplatePart {
-    Constant(u32),
+    Constant(String),
     Placeholder,
 }
 
@@ -132,7 +132,7 @@ fn detect_template(
 
     let num_tokens = docs[0].without_whitespace().count();
     let max_distinct_terms_threshold = if num_docs <= 5 { 1 } else { 5 };
-    let min_most_frequent_term_percentage = 0.99;
+    let _min_most_frequent_term_percentage = 0.99;
 
     let mut template_parts = Vec::new();
     for i in 0..num_tokens {
@@ -140,12 +140,13 @@ fn detect_template(
         let num_distinct_terms = term_id_counts.len();
 
         if num_distinct_terms <= max_distinct_terms_threshold {
-            let most_frequent_term = term_id_counts
+            let most_frequent_term_id = term_id_counts
                 .iter()
                 .max_by_key(|(_, count)| *count)
                 .unwrap()
                 .0;
-            template_parts.push(TemplatePart::Constant(*most_frequent_term));
+            let term = String::from_utf8_lossy(new_id_to_term_map[*most_frequent_term_id as usize]).to_string();
+            template_parts.push(TemplatePart::Constant(term));
         } else {
             template_parts.push(TemplatePart::Placeholder);
         }
