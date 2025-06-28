@@ -21,8 +21,10 @@ fn main() {
         .lines()
         .map(|line| line.expect("Failed to read line"));
     let preliminary_index = preliminary_index(lines);
-    let num_unique_templates = pattern_scan(&preliminary_index);
-    println!("Num Unique Templates: {}", num_unique_templates);
+    let (templates, templated_docs) = pattern_scan(&preliminary_index);
+
+    println!("Num Unique Templates: {}", templates.len());
+    println!("Num Templated Docs: {}", templated_docs.len());
     println!(
         "Throughput: {:.2} MB/s",
         (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64()
