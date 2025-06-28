@@ -21,9 +21,7 @@ fn main() {
         .lines()
         .map(|line| line.expect("Failed to read line"));
     let preliminary_index = preliminary_index(lines);
-    pattern_scan(&preliminary_index);
-
-    let num_unique_templates = preliminary_index.preliminary_docs.len();
+    let num_unique_templates = pattern_scan(&preliminary_index);
     println!("Num Unique Templates: {}", num_unique_templates);
     println!(
         "Throughput: {:.2} MB/s",

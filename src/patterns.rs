@@ -4,25 +4,27 @@ use fnv::FnvHashMap;
 
 use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
 
-pub fn pattern_scan(index: &PreliminaryIndex) {
+pub fn pattern_scan(index: &PreliminaryIndex) -> u32 {
     let mut term_id_to_term_map: Vec<&[u8]> = vec![&[]; index.term_hash_map.len()];
     for (term_bytes, old_id_addr) in index.term_hash_map.iter() {
         let old_id: u32 = index.term_hash_map.read(old_id_addr);
         term_id_to_term_map[old_id as usize] = term_bytes;
     }
 
+    let mut num_templates = 0;
     for docs_vec in index.preliminary_docs.values() {
         if docs_vec.is_empty() {
             continue;
         }
-        split_and_detect_templates(docs_vec, &term_id_to_term_map);
+        num_templates += split_and_detect_templates(docs_vec, &term_id_to_term_map);
     }
+    num_templates
 }
 
-fn split_and_detect_templates(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) {
+fn split_and_detect_templates(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) -> u32 {
     let num_docs = docs.len();
     if num_docs == 0 {
-        return;
+        return 0;
     }
 
     let num_tokens = docs[0].without_whitespace().count();
@@ -46,7 +48,7 @@ fn split_and_detect_templates(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) 
         .collect();
 
     if variant_positions.is_empty() {
-        detect_template_parts(docs, new_id_to_term_map, &column_term_id_counts);
+        detect_template_parts(docs, new_id_to_term_map, &column_term_id_counts)
     } else {
         let mut sub_groups: HashMap<Vec<u32>, Vec<PrelimDoc>> = HashMap::new();
         for doc in docs {
@@ -57,6 +59,7 @@ fn split_and_detect_templates(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) 
             sub_groups.entry(key).or_default().push(doc.clone());
         }
 
+        let mut num_templates = 0;
         for sub_group in sub_groups.values() {
             let mut sub_group_column_term_id_counts: Vec<FnvHashMap<u32, u32>> =
                 vec![FnvHashMap::default(); num_tokens];
@@ -68,12 +71,13 @@ fn split_and_detect_templates(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) 
                         .or_insert(1);
                 }
             }
-            detect_template_parts(
+            num_templates += detect_template_parts(
                 sub_group,
                 new_id_to_term_map,
                 &sub_group_column_term_id_counts,
             );
         }
+        num_templates
     }
 }
 
@@ -82,7 +86,7 @@ pub fn detect_template_parts(
     docs: &[PrelimDoc],
     new_id_to_term_map: &[&[u8]],
     column_term_id_counts: &[FnvHashMap<u32, u32>],
-) {
+) -> u32 {
     let num_docs = docs.len();
     println!("Number of documents: {}", num_docs);
     // Create a pattern from the group of docs
@@ -91,7 +95,7 @@ pub fn detect_template_parts(
     // then we only need to store the term_ids for the high cardinality terms in a columnar storage
     // 1. Convert into a columnar representation
     if num_docs == 0 {
-        return;
+        return 0;
     }
     let num_tokens = docs[0].without_whitespace().count();
     // 2. For each position, check how many distinct term_ids are there
@@ -163,4 +167,5 @@ pub fn detect_template_parts(
         }
     }
     println!("{num_templates}/{num_tokens} are templates",);
+    1
 }
