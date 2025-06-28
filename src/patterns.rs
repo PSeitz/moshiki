@@ -52,12 +52,7 @@ fn split_and_detect_templates(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) 
         for doc in docs {
             let key: Vec<u32> = variant_positions
                 .iter()
-                .map(|&i| {
-                    doc.without_whitespace()
-                        .nth(i)
-                        .unwrap()
-                        .term_id()
-                })
+                .map(|&i| doc.without_whitespace().nth(i).unwrap().term_id())
                 .collect();
             sub_groups.entry(key).or_default().push(doc.clone());
         }
@@ -82,7 +77,6 @@ fn split_and_detect_templates(docs: &[PrelimDoc], new_id_to_term_map: &[&[u8]]) 
     }
 }
 
-
 /// Detect template columns in a group of documents
 pub fn detect_template_parts(
     docs: &[PrelimDoc],
@@ -103,13 +97,7 @@ pub fn detect_template_parts(
     // 2. For each position, check how many distinct term_ids are there
     // We can early exit if we find a position with too many distinct term_ids
 
-    let max_distinct_terms_threshold = if num_docs <= 2 {
-        1
-    } else if num_docs <= 5 {
-        2
-    } else {
-        5
-    }; // A position is a template if it has <= 5 distinct terms
+    let max_distinct_terms_threshold = if num_docs <= 5 { 1 } else { 5 }; // A position is a template if it has <= 5 distinct terms
     let min_most_frequent_term_percentage = 0.99; // Or if the most frequent term appears in >= 99% of documents
 
     let mut is_token_pos_template = vec![false; num_tokens];
