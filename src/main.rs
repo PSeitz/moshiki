@@ -27,9 +27,9 @@ fn main() {
         println!("Template {}: {:?}", i, template);
     }
 
-    for (i, doc) in templated_docs.iter().enumerate() {
-        println!("Templated Doc {}: {:?}", i, doc);
-    }
+    //for (i, doc) in templated_docs.iter().enumerate() {
+    //println!("Templated Doc {}: {:?}", i, doc);
+    //}
     println!(
         "Throughput: {:.2} MB/s",
         (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64()

@@ -18,6 +18,7 @@ pub enum TemplatePart {
 #[derive(Debug)]
 pub struct TemplatedDocument {
     pub template_id: u32,
+    /// Term IDs for the placeholders in the template.
     pub placeholder_values: Vec<u32>,
 }
 
@@ -53,12 +54,14 @@ fn split_and_detect_templates(
         return (Vec::new(), Vec::new());
     }
 
-    let num_tokens = docs[0].without_whitespace().count();
+    let num_tokens = docs[0].iter().count();
     let mut column_term_id_counts: Vec<FnvHashMap<u32, u32>> =
         vec![FnvHashMap::default(); num_tokens];
 
+    // Assumption is that whitespace tokens are exactly the same for all documents here
+    // This depends on the grouping of documents in the preliminary index
     for doc in docs {
-        for (i, token) in doc.without_whitespace().enumerate() {
+        for (i, token) in doc.iter().enumerate() {
             column_term_id_counts[i]
                 .entry(token.term_id())
                 .and_modify(|count| *count += 1)
@@ -85,7 +88,7 @@ fn split_and_detect_templates(
         for doc in docs {
             let key: Vec<u32> = variant_positions
                 .iter()
-                .map(|&i| doc.without_whitespace().nth(i).unwrap().term_id())
+                .map(|&i| doc.iter().nth(i).unwrap().term_id())
                 .collect();
             sub_groups.entry(key).or_default().push(doc.clone());
         }
@@ -98,7 +101,7 @@ fn split_and_detect_templates(
             let mut sub_group_column_term_id_counts: Vec<FnvHashMap<u32, u32>> =
                 vec![FnvHashMap::default(); num_tokens];
             for doc in sub_group {
-                for (i, token) in doc.without_whitespace().enumerate() {
+                for (i, token) in doc.iter().enumerate() {
                     sub_group_column_term_id_counts[i]
                         .entry(token.term_id())
                         .and_modify(|count| *count += 1)
@@ -130,9 +133,8 @@ fn detect_template(
         return (Vec::new(), Vec::new());
     }
 
-    let num_tokens = docs[0].without_whitespace().count();
+    let num_tokens = docs[0].iter().count();
     let max_distinct_terms_threshold = if num_docs <= 5 { 1 } else { 5 };
-    let _min_most_frequent_term_percentage = 0.99;
 
     let mut template_parts = Vec::new();
     for i in 0..num_tokens {
@@ -145,7 +147,8 @@ fn detect_template(
                 .max_by_key(|(_, count)| *count)
                 .unwrap()
                 .0;
-            let term = String::from_utf8_lossy(new_id_to_term_map[*most_frequent_term_id as usize]).to_string();
+            let term = String::from_utf8_lossy(new_id_to_term_map[*most_frequent_term_id as usize])
+                .to_string();
             template_parts.push(TemplatePart::Constant(term));
         } else {
             template_parts.push(TemplatePart::Placeholder);
@@ -155,7 +158,7 @@ fn detect_template(
     let mut templated_docs = Vec::new();
     for doc in docs {
         let placeholder_values: Vec<u32> = doc
-            .without_whitespace()
+            .iter()
             .enumerate()
             .filter_map(|(i, token)| match template_parts[i] {
                 TemplatePart::Placeholder => Some(token.term_id()),
@@ -168,5 +171,10 @@ fn detect_template(
         });
     }
 
-    (vec![Template { parts: template_parts }], templated_docs)
+    (
+        vec![Template {
+            parts: template_parts,
+        }],
+        templated_docs,
+    )
 }
