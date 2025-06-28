@@ -16,7 +16,7 @@ pub fn fingerprint2(prelim_doc: &PrelimDoc) -> u64 {
         .map(|token| token.token_type())
         .take(max_tokens)
     {
-        fingerprint |= (token_type.0 as u64) << current_pos;
+        fingerprint |= (token_type as u64) << current_pos;
         current_pos += num_bits_per_type;
     }
     fingerprint
@@ -26,7 +26,7 @@ pub fn fingerprint(prelim_doc: &PrelimDoc) -> u64 {
     let mut hasher = FxHasher::default();
     let mut num_tokens = 0;
     for token in prelim_doc.without_whitespace() {
-        (token.token_type().0 as u64).hash(&mut hasher);
+        (token.token_type() as u64).hash(&mut hasher);
         num_tokens += 1;
     }
     // hash num tokens
@@ -52,8 +52,8 @@ mod test {
 
     #[test]
     fn multiple_tokens_pack_in_order() {
-        let a = Token::Number("42"); // type_id() is 2
-        let b = Token::Number("42"); // type_id() is 2
+        let a = Token::Number(0..0); // type_id() is 2
+        let b = Token::Number(0..0); // type_id() is 2
         let prelim_doc = create_prelim_doc(vec![a, b]);
         let bits = Token::type_id_num_bits() as u64;
         let expected = 2 | (2 << bits);
@@ -63,7 +63,7 @@ mod test {
 
     #[test]
     fn single_token() {
-        let a = Token::Number("42"); // type_id() is 2
+        let a = Token::Number(0..0); // type_id() is 2
         let prelim_doc = create_prelim_doc(vec![a]);
         let expected = 2;
 

@@ -20,7 +20,7 @@ impl CompositeToken {
     pub fn new(token_type: TokenType, term_id: u32) -> Self {
         // Ensure id fits in 28 bits
         assert!(term_id <= 0x0FFF_FFFF, "term ID out of range");
-        let tt = (token_type.0 as u32) & 0xF;
+        let tt = (token_type as u32) & 0xF;
         CompositeToken((tt << 28) | term_id)
     }
 
@@ -59,13 +59,14 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         for token in tokenizer {
             let next_id = term_hash_map.len() as u32;
             match token {
-                Token::IPv4(v)
-                | Token::Number(v)
-                | Token::Uuid(v)
-                | Token::Word(v)
-                | Token::Punctuation(v) => {
+                Token::IPv4(ref v)
+                | Token::Number(ref v)
+                | Token::Uuid(ref v)
+                | Token::Word(ref v)
+                | Token::Punctuation(ref v) => {
                     let mut term_id = 0;
-                    term_hash_map.mutate_or_create(v.as_bytes(), |opt| {
+                    let term_slice = &line[v.start as usize..v.end as usize];
+                    term_hash_map.mutate_or_create(term_slice.as_bytes(), |opt| {
                         term_id = opt.unwrap_or(next_id);
                         term_id
                     });
@@ -80,7 +81,7 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         let prelim_doc = PrelimDoc(token_type_with_term_ids);
         let mut hasher = FnvHasher::default();
         for token in prelim_doc.iter() {
-            hasher.write_u8(token.token_type().0);
+            hasher.write_u8(token.token_type() as u8);
             // To distinguish documents with different whitespace, we include the
             // number of whitespace tokens
             if token.token_type().is_whitespace() {

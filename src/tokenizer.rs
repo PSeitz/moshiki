@@ -1,4 +1,6 @@
-pub fn tokenize_into<'a>(input: &'a str, tokens: &mut Vec<Token<'a>>) {
+use std::ops::Range;
+
+pub fn tokenize_into(input: &str, tokens: &mut Vec<Token>) {
     let tokenizer = Tokenizer::new(input);
     for token in tokenizer {
         tokens.push(token);
@@ -9,60 +11,76 @@ pub fn tokenize(input: &str) -> Vec<Token> {
     Tokenizer::new(input).collect()
 }
 
-pub fn reconstruct_from_tokens<'a>(tokens: impl Iterator<Item = Token<'a>>) -> String {
+pub fn reconstruct_from_tokens(input: &str, tokens: impl Iterator<Item = Token>) -> String {
     tokens
         .map(|t| match t {
-            Token::IPv4(s)
-            | Token::Number(s)
-            | Token::Uuid(s)
-            | Token::Word(s)
-            | Token::Punctuation(s) => s.to_string(),
-            Token::Whitespace(s) => " ".repeat(s),
+            Token::IPv4(r)
+            | Token::Number(r)
+            | Token::Uuid(r)
+            | Token::Word(r)
+            | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
+            Token::Whitespace(s) => " ".repeat(s as usize),
         })
         .collect()
 }
 
 /// Typed token kinds with zero allocations
-#[derive(Debug, PartialEq, Eq)]
-pub enum Token<'a> {
-    IPv4(&'a str),
-    Number(&'a str),
-    Uuid(&'a str),
-    Word(&'a str),
-    Punctuation(&'a str),
-    Whitespace(usize),
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Token {
+    IPv4(Range<u32>),
+    Number(Range<u32>),
+    Uuid(Range<u32>),
+    Word(Range<u32>),
+    Punctuation(Range<u32>),
+    Whitespace(u32),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct TokenType(pub u8);
+#[repr(u8)]
+pub enum TokenType {
+    Word = 1,
+    Number = 2,
+    IPv4 = 3,
+    Uuid = 4,
+    Punctuation = 5,
+    Whitespace = 6,
+}
+
 impl TokenType {
     pub fn is_whitespace(&self) -> bool {
-        self.0 == 6 // Whitespace token type ID
+        *self == TokenType::Whitespace
     }
 }
 
 impl From<u8> for TokenType {
     #[inline]
     fn from(val: u8) -> Self {
-        TokenType(val)
+        match val {
+            1 => TokenType::Word,
+            2 => TokenType::Number,
+            3 => TokenType::IPv4,
+            4 => TokenType::Uuid,
+            5 => TokenType::Punctuation,
+            6 => TokenType::Whitespace,
+            _ => panic!("Invalid token type"),
+        }
     }
 }
 
 /// Retrun an ID for each token type
-impl<'a> Token<'a> {
+impl Token {
     #[inline]
     /// They start from 1, so we can use them for the fingerprint and differentiate from
     /// doesn't exist token type (0).
     pub fn token_type(&self) -> TokenType {
-        let val = match self {
-            Token::Word(_) => 1u8,
-            Token::Number(_) => 2,
-            Token::IPv4(_) => 3,
-            Token::Uuid(_) => 4,
-            Token::Punctuation(_) => 5,
-            Token::Whitespace(_) => 6,
-        };
-        val.into()
+        match self {
+            Token::Word(_) => TokenType::Word,
+            Token::Number(_) => TokenType::Number,
+            Token::IPv4(_) => TokenType::IPv4,
+            Token::Uuid(_) => TokenType::Uuid,
+            Token::Punctuation(_) => TokenType::Punctuation,
+            Token::Whitespace(_) => TokenType::Whitespace,
+        }
     }
 
     #[inline]
@@ -70,13 +88,13 @@ impl<'a> Token<'a> {
         3 // 6 token types fit in 3 bits (2^3 = 8)
     }
     #[inline]
-    pub fn as_str(&self) -> Option<&str> {
+    pub fn as_str<'a>(&self, input: &'a str) -> Option<&'a str> {
         match self {
-            Token::Word(s)
-            | Token::Number(s)
-            | Token::IPv4(s)
-            | Token::Uuid(s)
-            | Token::Punctuation(s) => Some(s),
+            Token::Word(r)
+            | Token::Number(r)
+            | Token::IPv4(r)
+            | Token::Uuid(r)
+            | Token::Punctuation(r) => Some(&input[r.start as usize..r.end as usize]),
             Token::Whitespace(_) => None,
         }
     }
@@ -157,7 +175,7 @@ fn is_uuid(s: &str) -> bool {
 /// (excluding '.', '-', and '_' so tokens like IPs, hyphenated IDs, and snake_case stay intact)
 pub struct Tokenizer<'a> {
     input: &'a str,
-    pos: usize,
+    pos: u32,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -168,16 +186,15 @@ impl<'a> Tokenizer<'a> {
 }
 
 impl<'a> Iterator for Tokenizer<'a> {
-    type Item = Token<'a>;
+    type Item = Token;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let remaining = &self.input[self.pos..];
-        if remaining.is_empty() {
+        if self.pos as usize >= self.input.len() {
             return None;
         }
 
-        let bytes = remaining.as_bytes();
+        let bytes = &self.input.as_bytes()[self.pos as usize..];
 
         // 1) Whitespace (contiguous)
         if bytes[0].is_ascii_whitespace() {
@@ -185,9 +202,11 @@ impl<'a> Iterator for Tokenizer<'a> {
                 .iter()
                 .take_while(|&&b| b.is_ascii_whitespace())
                 .count();
-            self.pos += len;
-            return Some(Token::Whitespace(len));
+            self.pos += len as u32;
+            return Some(Token::Whitespace(len as u32));
         }
+
+        let start = self.pos;
 
         // 2) Punctuation (contiguous), exclude '.', '-', '_'
         if bytes[0].is_ascii_punctuation()
@@ -195,18 +214,12 @@ impl<'a> Iterator for Tokenizer<'a> {
             && bytes[0] != b'-'
             && bytes[0] != b'_'
         {
-            let mut len = 0;
-            while self.pos + len < self.input.len()
-                && bytes[len].is_ascii_punctuation()
-                && bytes[len] != b'.'
-                && bytes[len] != b'-'
-                && bytes[len] != b'_'
-            {
-                len += 1;
-            }
-            let tok = &remaining[0..len];
-            self.pos += len;
-            return Some(Token::Punctuation(tok));
+            let len = bytes
+                .iter()
+                .take_while(|&&b| b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_')
+                .count();
+            self.pos += len as u32;
+            return Some(Token::Punctuation(start..self.pos));
         }
 
         // 3) Word-like token: scan until next whitespace or punctuation (excluding '.', '-', '_')
@@ -217,18 +230,19 @@ impl<'a> Iterator for Tokenizer<'a> {
                     || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_'))
             })
             .count();
-        let tok = &remaining[0..len];
-        self.pos += len;
+
+        let tok_str = &self.input[start as usize..(start as usize + len)];
+        self.pos += len as u32;
 
         // 4) Classify
-        let token = if is_ipv4(tok) {
-            Token::IPv4(tok)
-        } else if is_number(tok) {
-            Token::Number(tok)
-        } else if is_uuid(tok) {
-            Token::Uuid(tok)
+        let token = if is_ipv4(tok_str) {
+            Token::IPv4(start..self.pos)
+        } else if is_number(tok_str) {
+            Token::Number(start..self.pos)
+        } else if is_uuid(tok_str) {
+            Token::Uuid(start..self.pos)
         } else {
-            Token::Word(tok)
+            Token::Word(start..self.pos)
         };
         Some(token)
     }
@@ -240,68 +254,106 @@ mod tests {
 
     #[test]
     fn check_is_whitespace() {
-        assert!(TokenType(6).is_whitespace());
+        assert!(TokenType::Whitespace.is_whitespace());
     }
 
     #[test]
     fn test_tokenizer_simple() {
         let line = "src: /10.10.34.30:33078, dest: /10.10.34.11:50010";
         let toks: Vec<_> = tokenize(line);
-        assert_eq!(
-            toks,
-            vec![
-                Token::Word("src"),
-                Token::Punctuation(":"),
-                Token::Whitespace(1),
-                Token::Punctuation("/"),
-                Token::IPv4("10.10.34.30"),
-                Token::Punctuation(":"),
-                Token::Number("33078"),
-                Token::Punctuation(","),
-                Token::Whitespace(1),
-                Token::Word("dest"),
-                Token::Punctuation(":"),
-                Token::Whitespace(1),
-                Token::Punctuation("/"),
-                Token::IPv4("10.10.34.11"),
-                Token::Punctuation(":"),
-                Token::Number("50010"),
-            ]
-        );
+        let expected_strs = vec![
+            "src",
+            ":",
+            " ",
+            "/",
+            "10.10.34.30",
+            ":",
+            "33078",
+            ",",
+            " ",
+            "dest",
+            ":",
+            " ",
+            "/",
+            "10.10.34.11",
+            ":",
+            "50010",
+        ];
+        let expected_types = vec![
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Punctuation,
+            TokenType::IPv4,
+            TokenType::Punctuation,
+            TokenType::Number,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Punctuation,
+            TokenType::IPv4,
+            TokenType::Punctuation,
+            TokenType::Number,
+        ];
+
+        for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
+            assert_eq!(tok.token_type(), expected_types[i]);
+            match tok {
+                Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
+                _ => assert_eq!(tok.as_str(line).unwrap(), *expected_str),
+            }
+        }
+
+        let reconstructed = reconstruct_from_tokens(line, toks.into_iter());
+        assert_eq!(reconstructed, line);
     }
 
     #[test]
     fn test_packet_expected_and_reconstruction() {
         let line = "PacketResponder: BP-108841162-10.10.34.11-1440074360971:blk_1074072698_331874, type=HAS_DOWNSTREAM_IN_PIPELINE terminating";
         let toks: Vec<_> = tokenize(line);
-        let expected = vec![
-            Token::Word("PacketResponder"),
-            Token::Punctuation(":"),
-            Token::Whitespace(1),
-            Token::Word("BP-108841162-10.10.34.11-1440074360971"),
-            Token::Punctuation(":"),
-            Token::Word("blk_1074072698_331874"),
-            Token::Punctuation(","),
-            Token::Whitespace(1),
-            Token::Word("type"),
-            Token::Punctuation("="),
-            Token::Word("HAS_DOWNSTREAM_IN_PIPELINE"),
-            Token::Whitespace(1),
-            Token::Word("terminating"),
+        let expected_strs = vec![
+            "PacketResponder",
+            ":",
+            " ",
+            "BP-108841162-10.10.34.11-1440074360971",
+            ":",
+            "blk_1074072698_331874",
+            ",",
+            " ",
+            "type",
+            "=",
+            "HAS_DOWNSTREAM_IN_PIPELINE",
+            " ",
+            "terminating",
         ];
-        assert_eq!(toks, expected);
+        let expected_types = vec![
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Word,
+            TokenType::Whitespace,
+            TokenType::Word,
+        ];
 
-        let reconstructed: String = toks
-            .iter()
-            .map(|t| match t {
-                Token::IPv4(s)
-                | Token::Number(s)
-                | Token::Uuid(s)
-                | Token::Word(s)
-                | Token::Punctuation(s) => s.to_string(),
-                Token::Whitespace(s) => " ".repeat(*s),
-            })
-            .collect();
+        for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
+            assert_eq!(tok.token_type(), expected_types[i]);
+            match tok {
+                Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
+                _ => assert_eq!(tok.as_str(line).unwrap(), *expected_str),
+            }
+        }
+
+        let reconstructed = reconstruct_from_tokens(line, toks.into_iter());
         assert_eq!(reconstructed, line);
     }
 
@@ -310,69 +362,138 @@ mod tests {
         let line = "src: /10.10.34.11:52611, dest: /10.10.34.42:50010, bytes: 162571, op: HDFS_WRITE, cliID: DFSClient_NONMAPREDUCE_-941064892_1, offset: 0, srvID: ac6cb715-a2bc-4644-aaa4-10fcbd1c390e, blockid: BP-108841162-10.10.34.11-1440074360971:blk_1073854279_113455, duration: 3374681";
         let toks: Vec<_> = tokenize(line);
 
-        use Token::*;
-        let expected = vec![
-            Word("src"),
-            Punctuation(":"),
-            Whitespace(1),
-            Punctuation("/"),
-            IPv4("10.10.34.11"),
-            Punctuation(":"),
-            Number("52611"),
-            Punctuation(","),
-            Whitespace(1),
-            Word("dest"),
-            Punctuation(":"),
-            Whitespace(1),
-            Punctuation("/"),
-            IPv4("10.10.34.42"),
-            Punctuation(":"),
-            Number("50010"),
-            Punctuation(","),
-            Whitespace(1),
-            Word("bytes"),
-            Punctuation(":"),
-            Whitespace(1),
-            Number("162571"),
-            Punctuation(","),
-            Whitespace(1),
-            Word("op"),
-            Punctuation(":"),
-            Whitespace(1),
-            Word("HDFS_WRITE"),
-            Punctuation(","),
-            Whitespace(1),
-            Word("cliID"),
-            Punctuation(":"),
-            Whitespace(1),
-            Word("DFSClient_NONMAPREDUCE_-941064892_1"),
-            Punctuation(","),
-            Whitespace(1),
-            Word("offset"),
-            Punctuation(":"),
-            Whitespace(1),
-            Number("0"),
-            Punctuation(","),
-            Whitespace(1),
-            Word("srvID"),
-            Punctuation(":"),
-            Whitespace(1),
-            Uuid("ac6cb715-a2bc-4644-aaa4-10fcbd1c390e"),
-            Punctuation(","),
-            Whitespace(1),
-            Word("blockid"),
-            Punctuation(":"),
-            Whitespace(1),
-            Word("BP-108841162-10.10.34.11-1440074360971"),
-            Punctuation(":"),
-            Word("blk_1073854279_113455"),
-            Punctuation(","),
-            Whitespace(1),
-            Word("duration"),
-            Punctuation(":"),
-            Whitespace(1),
-            Number("3374681"),
+        let expected_strs = vec![
+            "src",
+            ":",
+            " ",
+            "/",
+            "10.10.34.11",
+            ":",
+            "52611",
+            ",",
+            " ",
+            "dest",
+            ":",
+            " ",
+            "/",
+            "10.10.34.42",
+            ":",
+            "50010",
+            ",",
+            " ",
+            "bytes",
+            ":",
+            " ",
+            "162571",
+            ",",
+            " ",
+            "op",
+            ":",
+            " ",
+            "HDFS_WRITE",
+            ",",
+            " ",
+            "cliID",
+            ":",
+            " ",
+            "DFSClient_NONMAPREDUCE_-941064892_1",
+            ",",
+            " ",
+            "offset",
+            ":",
+            " ",
+            "0",
+            ",",
+            " ",
+            "srvID",
+            ":",
+            " ",
+            "ac6cb715-a2bc-4644-aaa4-10fcbd1c390e",
+            ",",
+            " ",
+            "blockid",
+            ":",
+            " ",
+            "BP-108841162-10.10.34.11-1440074360971",
+            ":",
+            "blk_1073854279_113455",
+            ",",
+            " ",
+            "duration",
+            ":",
+            " ",
+            "3374681",
         ];
-        assert_eq!(toks, expected);
+
+        let expected_types = vec![
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Punctuation,
+            TokenType::IPv4,
+            TokenType::Punctuation,
+            TokenType::Number,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Punctuation,
+            TokenType::IPv4,
+            TokenType::Punctuation,
+            TokenType::Number,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Number,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Number,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Uuid,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Whitespace,
+            TokenType::Number,
+        ];
+
+        for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
+            assert_eq!(tok.token_type(), expected_types[i]);
+            match tok {
+                Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
+                _ => assert_eq!(tok.as_str(line).unwrap(), *expected_str),
+            }
+        }
     }
 }
