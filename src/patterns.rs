@@ -134,14 +134,13 @@ fn detect_template(
     }
 
     let num_tokens = docs[0].iter().count();
-    let max_distinct_terms_threshold = if num_docs <= 5 { 1 } else { 5 };
 
     let mut template_parts = Vec::new();
     for i in 0..num_tokens {
         let term_id_counts = &column_term_id_counts[i];
         let num_distinct_terms = term_id_counts.len();
 
-        if num_distinct_terms <= max_distinct_terms_threshold {
+        if num_distinct_terms == 1 {
             let most_frequent_term_id = term_id_counts
                 .iter()
                 .max_by_key(|(_, count)| *count)
