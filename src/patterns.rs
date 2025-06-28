@@ -9,7 +9,7 @@ pub fn pattern_scan(index: &PreliminaryIndex) {
         term_id_to_term_map[old_id as usize] = term_bytes;
     }
 
-    for docs_vec in index.preliminary_docs.iter() {
+    for docs_vec in index.preliminary_docs.values() {
         if docs_vec.is_empty() {
             continue;
         }

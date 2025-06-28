@@ -23,8 +23,8 @@ fn main() {
     let preliminary_index = preliminary_index(lines);
     pattern_scan(&preliminary_index);
 
-    let num_unique_token_counts = preliminary_index.preliminary_docs.len();
-    println!("Num Unique Token Counts: {}", num_unique_token_counts);
+    let num_unique_templates = preliminary_index.preliminary_docs.len();
+    println!("Num Unique Templates: {}", num_unique_templates);
     println!(
         "Throughput: {:.2} MB/s",
         (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64()
