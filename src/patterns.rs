@@ -141,13 +141,9 @@ fn detect_template(
         let num_distinct_terms = term_id_counts.len();
 
         if num_distinct_terms == 1 {
-            let most_frequent_term_id = term_id_counts
-                .iter()
-                .max_by_key(|(_, count)| *count)
-                .unwrap()
-                .0;
-            let term = String::from_utf8_lossy(new_id_to_term_map[*most_frequent_term_id as usize])
-                .to_string();
+            // If there's only one distinct term, it must be the constant term for this position.
+            let (&term_id, _) = term_id_counts.iter().next().unwrap();
+            let term = String::from_utf8_lossy(new_id_to_term_map[term_id as usize]).to_string();
             template_parts.push(TemplatePart::Constant(term));
         } else {
             template_parts.push(TemplatePart::Placeholder);
