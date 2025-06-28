@@ -150,8 +150,7 @@ fn detect_template(
     let num_tokens = docs[0].iter().count();
 
     let mut template_parts = Vec::new();
-    for i in 0..num_tokens {
-        let term_id_counts = &column_term_id_counts[i];
+    for term_id_counts in column_term_id_counts.iter().take(num_tokens) {
         let num_distinct_terms = term_id_counts.len();
 
         if num_distinct_terms == 1 {

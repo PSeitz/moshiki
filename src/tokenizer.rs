@@ -213,8 +213,7 @@ impl<'a> Iterator for Tokenizer<'a> {
         let len = bytes
             .iter()
             .take_while(|&&b| {
-                !b.is_ascii_whitespace()
-                    && !(b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_')
+                !(b.is_ascii_whitespace() || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_'))
             })
             .count();
         let tok = &remaining[0..len];
