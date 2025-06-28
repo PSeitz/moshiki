@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use fnv::FnvHasher;
-use std::hash::Hasher;
 use stacker::ArenaHashMap;
+use std::collections::HashMap;
+use std::hash::Hasher;
 
-use crate::{
-    tokenizer::{Token, TokenType, Tokenizer},
-};
+use crate::tokenizer::{Token, TokenType, Tokenizer};
 
 pub struct PreliminaryIndex {
     pub term_hash_map: ArenaHashMap,
@@ -37,6 +35,12 @@ impl CompositeToken {
     /// Extract the 28-bit term ID
     pub fn term_id(&self) -> u32 {
         self.0 & 0x0FFF_FFFF
+    }
+
+    /// Get the raw u32 value
+    #[inline]
+    pub fn as_u32(&self) -> u32 {
+        self.0
     }
 }
 impl From<(TokenType, u32)> for CompositeToken {
@@ -76,8 +80,13 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
 
         let prelim_doc = PrelimDoc(token_type_with_term_ids);
         let mut hasher = FnvHasher::default();
-        for token in prelim_doc.without_whitespace() {
+        for token in prelim_doc.iter() {
             hasher.write_u8(token.token_type().0);
+            // To distinguish documents with different whitespace, we include the
+            // number of whitespace tokens
+            if token.token_type().is_whitespace() {
+                hasher.write_u32(token.term_id());
+            }
         }
         let hash = hasher.finish();
 
@@ -94,10 +103,12 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
 pub struct PrelimDoc(pub Vec<CompositeToken>);
 
 impl PrelimDoc {
+    pub fn iter(&self) -> impl Iterator<Item = &CompositeToken> {
+        self.0.iter()
+    }
     pub fn without_whitespace(&self) -> impl Iterator<Item = &CompositeToken> {
         self.0
             .iter()
             .filter(|token| !token.token_type().is_whitespace())
     }
 }
-

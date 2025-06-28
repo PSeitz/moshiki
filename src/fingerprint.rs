@@ -2,7 +2,7 @@ use std::hash::{Hash, Hasher};
 
 use fxhash::FxHasher;
 
-use crate::{Token, prelim_index::PrelimDoc};
+use crate::{prelim_index::PrelimDoc, Token};
 
 /// This function generates a fingerprint for an iterator of token types.
 pub fn fingerprint2(prelim_doc: &PrelimDoc) -> u64 {
@@ -38,8 +38,8 @@ pub fn fingerprint(prelim_doc: &PrelimDoc) -> u64 {
 mod test {
     use super::{fingerprint, fingerprint2};
     use crate::{
-        Token,
         prelim_index::{CompositeToken, PrelimDoc},
+        Token,
     };
 
     fn create_prelim_doc(tokens: Vec<Token>) -> PrelimDoc {
