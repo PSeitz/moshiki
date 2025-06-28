@@ -1,4 +1,4 @@
-use std::fs::{self};
+use std::fs;
 use std::io::BufRead;
 use std::path::Path;
 
@@ -19,7 +19,7 @@ fn main() {
         fs::create_dir_all(output_folder).expect("Failed to create output folder");
     }
 
-    println!("Reading NDJSON file: {}", ndjson_file);
+    println!("Reading NDJSON file: {ndjson_file}");
     let file_size = std::fs::metadata(ndjson_file)
         .expect("Failed to get file metadata")
         .len();
@@ -38,3 +38,4 @@ fn main() {
         (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64()
     );
 }
+

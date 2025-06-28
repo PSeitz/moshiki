@@ -3,12 +3,21 @@ name = "moshiki"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "moshiki"
+path = "src/main.rs"
+
+[[bin]]
+name = "search"
+path = "src/bin/search.rs"
+
 [dependencies]
 binggan = "0.14.2"
 fnv = "1.0.7"
-fst = "0.4.7"
+fst = { version = "0.4.7", features = ["levenshtein"] }
 fxhash = "0.2.1"
 memchr = "2.7.5"
+memmap2 = "0.9.4"
 sstable = "0.11.1"
 stacker = { version = "0.5", path = "./stacker", package = "tantivy-stacker" }
 tantivy-sstable = "0.5.0"
