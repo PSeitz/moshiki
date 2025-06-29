@@ -44,7 +44,12 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
             .collect();
 
         let mut docs_ids = Vec::new();
-        for column in group.columns.iter() {
+        for (column_pos, column) in group.columns.iter().enumerate() {
+            // Skip constant columns or whitespace columns
+            if !group.template.tokens[column_pos].is_variable() {
+                continue;
+            }
+
             for term_id in column {
                 docs_ids.push(old_to_new_id_map[term_id.term_id() as usize]);
             }
