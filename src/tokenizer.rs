@@ -99,11 +99,12 @@ impl Token {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn is_whitespace(&self) -> bool {
         matches!(self, Token::Whitespace(_))
     }
 
-    pub(crate) fn len(&self) -> u32 {
+    pub fn len(&self) -> u32 {
         match self {
             Token::Word(r)
             | Token::Number(r)
@@ -112,6 +113,10 @@ impl Token {
             | Token::Punctuation(r) => r.end - r.start,
             Token::Whitespace(len) => *len,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
