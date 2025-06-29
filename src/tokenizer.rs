@@ -121,76 +121,101 @@ impl Token {
 }
 
 /// Quick IPv4 check: four octets 0–255
+/// Returns the number of bytes consumed.
 #[inline]
-fn is_ipv4(s: &str) -> bool {
+fn is_ipv4(s: &str) -> Option<usize> {
     let bytes = s.as_bytes();
-    if bytes.is_empty() {
-        return false;
-    }
+    let mut i = 0; // current index in `bytes`
 
-    let mut octet_count = 0;
-    let mut current_octet_val = 0;
-    let mut current_octet_len = 0;
-    let mut prev_char_was_digit = false;
+    for octet_idx in 0..4 {
+        // --- Parse one octet ------------------------------------------------
+        let start = i;
 
-    for &b in bytes {
-        if b == b'.' {
-            if octet_count == 3 || current_octet_len == 0 || !prev_char_was_digit {
-                return false;
+        // At least one digit must be present
+        if i >= bytes.len() || !bytes[i].is_ascii_digit() {
+            return None;
+        }
+
+        let mut val: u16 = 0;
+        let mut digit_cnt = 0;
+
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            // Convert ASCII digit to numeric value
+            val = val * 10 + (bytes[i] - b'0') as u16;
+            digit_cnt += 1;
+            i += 1;
+
+            // Early bail-out conditions
+            if digit_cnt > 3 || val > 255 {
+                return None;
             }
-            octet_count += 1;
-            current_octet_val = 0;
-            current_octet_len = 0;
-            prev_char_was_digit = false;
-        } else if b.is_ascii_digit() {
-            current_octet_val = current_octet_val * 10 + (b - b'0') as u16;
-            current_octet_len += 1;
-            if current_octet_val > 255
-                || current_octet_len > 3
-                || (current_octet_len > 1
-                    && current_octet_val < 10
-                    && bytes[bytes.len() - current_octet_len] == b'0')
-            {
-                return false;
+        }
+
+        // Reject leading zeros like "01", but allow "0"
+        if digit_cnt > 1 && bytes[start] == b'0' {
+            return None;
+        }
+
+        // --- Expect a dot after the first three octets ----------------------
+        if octet_idx < 3 {
+            if i >= bytes.len() || bytes[i] != b'.' {
+                return None;
             }
-            prev_char_was_digit = true;
-        } else {
-            return false;
+            i += 1; // consume the '.'
         }
     }
 
-    octet_count == 3 && current_octet_len > 0 && prev_char_was_digit
+    Some(i) // number of bytes consumed
 }
 
 /// All digits (treat any numeric token as Number)
+/// Returns `Some(u32)` if the string is a valid number
+/// The parameter is the number of bytes in the token
 #[inline]
-fn is_number(s: &str) -> bool {
-    !s.is_empty() && s.as_bytes().iter().all(|&c| c.is_ascii_digit())
+fn is_number(s: &str) -> Option<usize> {
+    if s.is_empty() {
+        return None;
+    }
+    if !s.as_bytes()[0].is_ascii_digit() {
+        // Check if the first character is a digit
+        return None;
+    }
+    Some(
+        s.as_bytes()
+            .iter()
+            .take_while(|&c| c.is_ascii_digit())
+            .count(),
+    )
 }
 
-/// Simple UUID v4-ish check (36 chars + hyphens)
+/// Simple UUID v4-ish check (8-4-4-4-12 pattern, 36 bytes total)
+/// Returns the number of bytes consumed (36) on success.
 #[inline]
-fn is_uuid(s: &str) -> bool {
+fn is_uuid(s: &str) -> Option<usize> {
     let bytes = s.as_bytes();
-    if bytes.len() != 36 {
-        return false;
+
+    // Need at least 36 bytes available
+    if bytes.len() < 36 {
+        return None;
     }
 
-    for (i, &b) in bytes.iter().enumerate() {
+    for i in 0..36 {
+        let b = bytes[i];
         match i {
             8 | 13 | 18 | 23 => {
                 if b != b'-' {
-                    return false;
+                    return None; // wrong separator
                 }
             }
             _ => {
                 if !b.is_ascii_hexdigit() {
-                    return false;
+                    return None; // non-hex digit
                 }
             }
         }
     }
-    true
+
+    Some(36)
 }
 
 /// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
@@ -204,6 +229,11 @@ impl<'a> Tokenizer<'a> {
     #[inline]
     pub fn new(input: &'a str) -> Self {
         Tokenizer { input, pos: 0 }
+    }
+
+    #[inline]
+    pub fn get_text(&self) -> &'a str {
+        &self.input[self.pos as usize..]
     }
 }
 
@@ -230,40 +260,38 @@ impl<'a> Iterator for Tokenizer<'a> {
 
         let start = self.pos;
 
-        // 2) Punctuation (contiguous), exclude '.', '-', '_'
-        if bytes[0].is_ascii_punctuation()
-            && bytes[0] != b'.'
-            && bytes[0] != b'-'
-            && bytes[0] != b'_'
-        {
+        // 2) Punctuation (contiguous)
+        if bytes[0].is_ascii_punctuation() {
             let len = bytes
                 .iter()
-                .take_while(|&&b| b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_')
+                .take_while(|&&b| b.is_ascii_punctuation())
                 .count();
             self.pos += len as u32;
             return Some(Token::Punctuation(start..self.pos));
         }
 
-        // 3) Word-like token: scan until next whitespace or punctuation (excluding '.', '-', '_')
-        let len = bytes
-            .iter()
-            .take_while(|&&b| {
-                !(b.is_ascii_whitespace()
-                    || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_'))
-            })
-            .count();
-
-        let tok_str = &self.input[start as usize..(start as usize + len)];
-        self.pos += len as u32;
-
         // 4) Classify
-        let token = if is_ipv4(tok_str) {
+        let tok_str = self.get_text();
+        let token = if let Some(num_bytes) = is_ipv4(tok_str) {
+            self.pos += num_bytes as u32;
             Token::IPv4(start..self.pos)
-        } else if is_number(tok_str) {
+        } else if let Some(num_bytes) = is_number(tok_str) {
+            self.pos += num_bytes as u32;
             Token::Number(start..self.pos)
-        } else if is_uuid(tok_str) {
+        } else if let Some(num_bytes) = is_uuid(tok_str) {
+            self.pos += num_bytes as u32;
             Token::Uuid(start..self.pos)
         } else {
+            // 3) Word-like token: scan until next whitespace or punctuation (excluding '.', '-', '_')
+            let len = bytes
+                .iter()
+                .take_while(|&&b| {
+                    !(b.is_ascii_whitespace()
+                        || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_'))
+                })
+                .count();
+
+            self.pos += len as u32;
             Token::Word(start..self.pos)
         };
         Some(token)
