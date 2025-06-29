@@ -13,12 +13,24 @@ pub struct PreliminaryIndex {
 
 #[derive(Debug, Clone, Default)]
 pub struct PrelimDocGroup {
-    pub docs: Vec<PrelimDoc>,
+    pub columns: Vec<Vec<CompositeToken>>,
+    pub num_docs: usize,
 }
+
 impl PrelimDocGroup {
-    fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut ArenaHashMap) {
-        let mut token_type_with_term_ids: Vec<CompositeToken> = Vec::with_capacity(tokens.len());
-        for token in tokens {
+    pub fn iter(&self) -> impl Iterator<Item = PrelimDoc<'_>> + '_ {
+        (0..self.num_docs).map(move |i| PrelimDoc {
+            group: self,
+            doc_index: i,
+        })
+    }
+
+    pub fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut ArenaHashMap) {
+        if self.columns.is_empty() {
+            self.columns = vec![Vec::new(); tokens.len()];
+        }
+
+        for (i, token) in tokens.iter().enumerate() {
             let next_id = term_hash_map.len() as u32;
             match token {
                 Token::IPv4(v)
@@ -32,15 +44,25 @@ impl PrelimDocGroup {
                         term_id = opt.unwrap_or(next_id);
                         term_id
                     });
-                    token_type_with_term_ids.push((token.token_type(), term_id).into());
+                    self.columns[i].push((token.token_type(), term_id).into());
                 }
                 Token::Whitespace(num) => {
-                    token_type_with_term_ids.push((token.token_type(), *num).into());
+                    self.columns[i].push((token.token_type(), *num).into());
                 }
             }
         }
+        self.num_docs += 1;
+    }
 
-        self.docs.push(PrelimDoc(token_type_with_term_ids));
+    pub(crate) fn is_empty(&self) -> bool {
+        self.num_docs == 0
+    }
+
+    pub(crate) fn num_tokens(&self) -> usize {
+        self.columns.len()
+    }
+    pub(crate) fn num_docs(&self) -> usize {
+        self.num_docs
     }
 }
 
@@ -116,16 +138,26 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PrelimDoc(pub Vec<CompositeToken>);
+#[derive(Debug, Clone, Copy)]
+pub struct PrelimDoc<'a> {
+    group: &'a PrelimDocGroup,
+    doc_index: usize,
+}
 
-impl PrelimDoc {
-    pub fn iter(&self) -> impl Iterator<Item = &CompositeToken> {
-        self.0.iter()
-    }
-    pub fn without_whitespace(&self) -> impl Iterator<Item = &CompositeToken> {
-        self.0
+impl<'a> PrelimDoc<'a> {
+    pub fn iter(self) -> impl Iterator<Item = CompositeToken> + 'a {
+        self.group
+            .columns
             .iter()
+            .map(move |column| column[self.doc_index])
+    }
+
+    pub fn without_whitespace(self) -> impl Iterator<Item = CompositeToken> + 'a {
+        self.iter()
             .filter(|token| !token.token_type().is_whitespace())
+    }
+
+    pub fn token_at(self, column_index: usize) -> CompositeToken {
+        self.group.columns[column_index][self.doc_index]
     }
 }

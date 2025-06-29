@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use fnv::FnvHashMap;
 
-use crate::prelim_index::{PrelimDoc, PreliminaryIndex};
+use crate::prelim_index::{PrelimDocGroup, PreliminaryIndex};
 
 #[derive(Debug)]
 pub struct TemplateAndDocs {
@@ -56,12 +54,12 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
     let mut template_and_docs = Vec::new();
 
     let mut next_template_id = TemplateIdProvider::new();
-    for docs_vec in index.preliminary_docs.values() {
-        if docs_vec.docs.is_empty() {
+    for prelim_doc_group in index.preliminary_docs.values() {
+        if prelim_doc_group.is_empty() {
             continue;
         }
         let new_template_and_docs = split_and_detect_templates(
-            &docs_vec.docs,
+            prelim_doc_group,
             &term_id_to_term_map,
             &mut next_template_id,
             old_to_new_id_map,
@@ -72,23 +70,23 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
 }
 
 fn split_and_detect_templates(
-    docs: &[PrelimDoc],
+    docs: &PrelimDocGroup,
     new_id_to_term_map: &[&[u8]],
     next_template_id: &mut TemplateIdProvider,
     old_to_new_id_map: &[u32],
 ) -> Vec<TemplateAndDocs> {
-    let num_docs = docs.len();
+    let num_docs = docs.num_docs();
     if num_docs == 0 {
         return Vec::new();
     }
 
-    let num_tokens = docs[0].iter().count();
+    let num_tokens = docs.num_tokens();
     let mut column_term_id_counts: Vec<FnvHashMap<u32, u32>> =
         vec![FnvHashMap::default(); num_tokens];
 
     // Assumption is that whitespace tokens are exactly the same for all documents here
     // This depends on the grouping of documents in the preliminary index
-    for doc in docs {
+    for doc in docs.iter() {
         for (i, token) in doc.iter().enumerate() {
             column_term_id_counts[i]
                 .entry(token.term_id())
@@ -97,65 +95,65 @@ fn split_and_detect_templates(
         }
     }
 
-    let variant_positions: Vec<usize> = (0..num_tokens)
-        .filter(|&i| {
-            let num_distinct_terms = column_term_id_counts[i].len();
-            num_distinct_terms > 1 && num_distinct_terms <= 5
-        })
-        .collect();
+    //let variant_positions: Vec<usize> = (0..num_tokens)
+    //.filter(|&i| {
+    //let num_distinct_terms = column_term_id_counts[i].len();
+    //num_distinct_terms > 1 && num_distinct_terms <= 5
+    //})
+    //.collect();
 
-    if variant_positions.is_empty() {
-        vec![detect_template(
-            docs,
-            new_id_to_term_map,
-            &column_term_id_counts,
-            next_template_id,
-            old_to_new_id_map,
-        )]
-    } else {
-        let mut sub_groups: HashMap<Vec<u32>, Vec<PrelimDoc>> = HashMap::new();
-        for doc in docs {
-            let key: Vec<u32> = variant_positions
-                .iter()
-                .map(|&i| doc.0[i].term_id())
-                .collect();
-            sub_groups.entry(key).or_default().push(doc.clone());
-        }
+    //if true || variant_positions.is_empty() {
+    vec![detect_template(
+        docs,
+        new_id_to_term_map,
+        &column_term_id_counts,
+        next_template_id,
+        old_to_new_id_map,
+    )]
+    //} else {
+    //let mut sub_groups: HashMap<Vec<u32>, PrelimDocGroup> = HashMap::new();
+    //for doc in docs.iter() {
+    //let key: Vec<u32> = variant_positions
+    //.iter()
+    //.map(|&i| doc.token_at(i).term_id())
+    //.collect();
+    //sub_groups.entry(key).or_default().push_indexed(*doc);
+    //}
 
-        let mut templates_and_docs = Vec::new();
+    //let mut templates_and_docs = Vec::new();
 
-        for sub_group in sub_groups.values() {
-            let mut sub_group_column_term_id_counts: Vec<FnvHashMap<u32, u32>> =
-                vec![FnvHashMap::default(); num_tokens];
-            for doc in sub_group {
-                for (i, token) in doc.iter().enumerate() {
-                    sub_group_column_term_id_counts[i]
-                        .entry(token.term_id())
-                        .and_modify(|count| *count += 1)
-                        .or_insert(1);
-                }
-            }
-            let new_template_and_docs = detect_template(
-                sub_group,
-                new_id_to_term_map,
-                &sub_group_column_term_id_counts,
-                next_template_id,
-                old_to_new_id_map,
-            );
-            templates_and_docs.push(new_template_and_docs);
-        }
-        templates_and_docs
-    }
+    //for sub_group in sub_groups.values() {
+    //let mut sub_group_column_term_id_counts: Vec<FnvHashMap<u32, u32>> =
+    //vec![FnvHashMap::default(); num_tokens];
+    //for doc in sub_group {
+    //for (i, token) in doc.iter().enumerate() {
+    //sub_group_column_term_id_counts[i]
+    //.entry(token.term_id())
+    //.and_modify(|count| *count += 1)
+    //.or_insert(1);
+    //}
+    //}
+    //let new_template_and_docs = detect_template(
+    //sub_group,
+    //new_id_to_term_map,
+    //&sub_group_column_term_id_counts,
+    //next_template_id,
+    //old_to_new_id_map,
+    //);
+    //templates_and_docs.push(new_template_and_docs);
+    //}
+    //templates_and_docs
+    //}
 }
 
 fn detect_template(
-    docs: &[PrelimDoc],
+    docs: &PrelimDocGroup,
     new_id_to_term_map: &[&[u8]],
     column_term_id_counts: &[FnvHashMap<u32, u32>],
     template_id: &mut TemplateIdProvider,
     old_to_new_id_map: &[u32],
 ) -> TemplateAndDocs {
-    let num_tokens = docs[0].iter().count();
+    let num_tokens = docs.num_tokens();
 
     let mut template_parts = Vec::new();
     for term_id_counts in column_term_id_counts.iter().take(num_tokens) {
@@ -172,7 +170,7 @@ fn detect_template(
     }
 
     let mut templated_docs = Vec::new();
-    for doc in docs {
+    for doc in docs.iter() {
         let placeholder_values =
             doc.iter()
                 .enumerate()

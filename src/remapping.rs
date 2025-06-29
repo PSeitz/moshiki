@@ -1,9 +1,13 @@
-use crate::prelim_index::{CompositeToken, PrelimDoc};
+use crate::prelim_index::{CompositeToken, PrelimDocGroup};
+use fnv::FnvHashMap;
 
-pub fn remap_term_ids(preliminary_docs: &mut [Vec<PrelimDoc>], old_to_new_id_map: &[u32]) {
-    for docs_vec in preliminary_docs.iter_mut() {
-        for doc in docs_vec.iter_mut() {
-            for composite_token in doc.0.iter_mut() {
+pub fn remap_term_ids(
+    preliminary_docs: &mut FnvHashMap<u64, PrelimDocGroup>,
+    old_to_new_id_map: &[u32],
+) {
+    for group in preliminary_docs.values_mut() {
+        for column in group.columns.iter_mut() {
+            for composite_token in column.iter_mut() {
                 if !composite_token.token_type().is_whitespace() {
                     let old_term_id = composite_token.term_id();
                     let ordinal_term_id = old_to_new_id_map[old_term_id as usize];
@@ -42,27 +46,20 @@ mod tests {
             "hello there".to_string(),
             "goodbye world".to_string(),
         ];
-        let prelim_index = preliminary_index(lines.into_iter());
+        let mut prelim_index = preliminary_index(lines.into_iter());
         let dir = tempdir().unwrap();
         let index_writer = IndexWriter::new(dir.path().to_str().unwrap().to_string());
         let old_to_new_id_map = index_writer
             .write_dictionary_and_generate_mapping(&prelim_index.term_hash_map)
             .unwrap();
 
-        let mut docs_vec: Vec<Vec<PrelimDoc>> = prelim_index
-            .preliminary_docs
-            .values()
-            .map(|el| el.docs.clone())
-            .collect();
-        remap_term_ids(&mut docs_vec, &old_to_new_id_map);
+        remap_term_ids(&mut prelim_index.preliminary_docs, &old_to_new_id_map);
 
         let mut remapped_tokens = Vec::new();
-        for docs in docs_vec {
-            for doc in docs {
-                for token in doc.iter() {
-                    if !token.token_type().is_whitespace() {
-                        remapped_tokens.push(token.term_id());
-                    }
+        for group in prelim_index.preliminary_docs.values() {
+            for doc in group.iter() {
+                for token in doc.without_whitespace() {
+                    remapped_tokens.push(token.term_id());
                 }
             }
         }
