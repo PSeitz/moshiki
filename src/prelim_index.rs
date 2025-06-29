@@ -73,7 +73,7 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
                     token_type_with_term_ids.push((token.token_type(), term_id).into());
                 }
                 Token::Whitespace(num) => {
-                    token_type_with_term_ids.push((token.token_type(), num as u32).into());
+                    token_type_with_term_ids.push((token.token_type(), num).into());
                 }
             }
         }

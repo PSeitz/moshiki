@@ -9,5 +9,5 @@ fn main() {
 
     let searcher = moshiki::search::Searcher::new(output_folder).unwrap();
     let term_ids = searcher.search(query);
-    println!("Found term IDs: {:?}", term_ids);
+    println!("Found term IDs: {term_ids:?}");
 }

@@ -36,7 +36,7 @@ pub fn fingerprint(prelim_doc: &PrelimDoc) -> u64 {
 }
 #[cfg(test)]
 mod test {
-    use super::{fingerprint, fingerprint2};
+    use super::fingerprint2;
     use crate::{
         Token,
         prelim_index::{CompositeToken, PrelimDoc},

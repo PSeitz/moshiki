@@ -279,8 +279,7 @@ mod tests {
             ":",
             "50010",
         ];
-        let expected_types = vec![
-            TokenType::Word,
+        let expected_types = [TokenType::Word,
             TokenType::Punctuation,
             TokenType::Whitespace,
             TokenType::Punctuation,
@@ -295,8 +294,7 @@ mod tests {
             TokenType::Punctuation,
             TokenType::IPv4,
             TokenType::Punctuation,
-            TokenType::Number,
-        ];
+            TokenType::Number];
 
         for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
             assert_eq!(tok.token_type(), expected_types[i]);
@@ -329,8 +327,7 @@ mod tests {
             " ",
             "terminating",
         ];
-        let expected_types = vec![
-            TokenType::Word,
+        let expected_types = [TokenType::Word,
             TokenType::Punctuation,
             TokenType::Whitespace,
             TokenType::Word,
@@ -342,8 +339,7 @@ mod tests {
             TokenType::Punctuation,
             TokenType::Word,
             TokenType::Whitespace,
-            TokenType::Word,
-        ];
+            TokenType::Word];
 
         for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
             assert_eq!(tok.token_type(), expected_types[i]);
@@ -425,8 +421,7 @@ mod tests {
             "3374681",
         ];
 
-        let expected_types = vec![
-            TokenType::Word,
+        let expected_types = [TokenType::Word,
             TokenType::Punctuation,
             TokenType::Whitespace,
             TokenType::Punctuation,
@@ -485,8 +480,7 @@ mod tests {
             TokenType::Word,
             TokenType::Punctuation,
             TokenType::Whitespace,
-            TokenType::Number,
-        ];
+            TokenType::Number];
 
         for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
             assert_eq!(tok.token_type(), expected_types[i]);
