@@ -40,7 +40,6 @@ impl PrelimDocGroup {
             }
         }
 
-        dbg!(&token_type_with_term_ids);
         self.docs.push(PrelimDoc(token_type_with_term_ids));
     }
 }
