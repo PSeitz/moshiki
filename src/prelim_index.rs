@@ -1,36 +1,44 @@
-use fnv::FnvHashMap;
-use stacker::ArenaHashMap;
-
 use crate::{
     fingerprint::fingerprint,
     tokenizer::{Token, TokenType, Tokenizer},
 };
+use fnv::FnvHashMap;
+use stacker::ArenaHashMap;
+
+#[derive(Debug, Clone, Copy)]
+pub enum TemplateToken {
+    Constant(CompositeToken),
+    Variable { column_index: usize },
+    Whitespace(u32),
+}
+
+impl TemplateToken {}
+
+#[derive(Debug, Clone, Default)]
+pub struct Template {
+    pub tokens: Vec<TemplateToken>,
+}
 
 pub struct PreliminaryIndex {
     pub term_hash_map: ArenaHashMap,
     pub preliminary_docs: FnvHashMap<u64, PrelimDocGroup>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PrelimDocGroup {
+    pub template: Template,
     pub columns: Vec<Vec<CompositeToken>>,
     pub num_docs: usize,
 }
 
-impl PrelimDocGroup {
-    pub fn iter(&self) -> impl Iterator<Item = PrelimDoc<'_>> + '_ {
-        (0..self.num_docs).map(move |i| PrelimDoc {
-            group: self,
-            doc_index: i,
-        })
-    }
-
-    pub fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut ArenaHashMap) {
-        if self.columns.is_empty() {
-            self.columns = vec![Vec::new(); tokens.len()];
-        }
-
-        for (i, token) in tokens.iter().enumerate() {
+fn create_composite_tokens(
+    tokens: &[Token],
+    line: &str,
+    term_hash_map: &mut ArenaHashMap,
+) -> Vec<CompositeToken> {
+    tokens
+        .iter()
+        .map(|token| {
             let next_id = term_hash_map.len() as u32;
             match token {
                 Token::IPv4(v)
@@ -44,25 +52,69 @@ impl PrelimDocGroup {
                         term_id = opt.unwrap_or(next_id);
                         term_id
                     });
-                    self.columns[i].push((token.token_type(), term_id).into());
+                    (token.token_type(), term_id).into()
                 }
-                Token::Whitespace(num) => {
-                    self.columns[i].push((token.token_type(), *num).into());
+                Token::Whitespace(num) => (token.token_type(), *num).into(),
+            }
+        })
+        .collect()
+}
+
+impl PrelimDocGroup {
+    pub fn new(tokens: &[Token], line: &str, term_hash_map: &mut ArenaHashMap) -> Self {
+        let composite_tokens = create_composite_tokens(tokens, line, term_hash_map);
+        let template_tokens = composite_tokens
+            .iter()
+            .map(|ct| {
+                if ct.token_type().is_whitespace() {
+                    TemplateToken::Whitespace(ct.term_id())
+                } else {
+                    TemplateToken::Constant(*ct)
+                }
+            })
+            .collect();
+
+        Self {
+            template: Template {
+                tokens: template_tokens,
+            },
+            columns: Vec::new(),
+            num_docs: 0,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = PrelimDoc<'_>> + '_ {
+        (0..self.num_docs).map(move |i| PrelimDoc {
+            group: self,
+            doc_index: i,
+        })
+    }
+
+    fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut ArenaHashMap) {
+        let composite_tokens = create_composite_tokens(tokens, line, term_hash_map);
+        // Compare with template and update if necessary
+        for (i, ct) in composite_tokens.iter().enumerate() {
+            let template_token = &mut self.template.tokens[i];
+            match template_token {
+                TemplateToken::Constant(existing_ct) => {
+                    if existing_ct.term_id() != ct.term_id() {
+                        // This position is now variable
+                        let column_index = self.columns.len();
+                        let mut new_column = vec![*existing_ct; self.num_docs];
+                        new_column.push(*ct);
+                        self.columns.push(new_column);
+                        *template_token = TemplateToken::Variable { column_index };
+                    }
+                }
+                TemplateToken::Variable { column_index } => {
+                    self.columns[*column_index].push(*ct);
+                }
+                TemplateToken::Whitespace(_) => {
+                    // Assume whitespace is constant within a group
                 }
             }
         }
         self.num_docs += 1;
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.num_docs == 0
-    }
-
-    pub(crate) fn num_tokens(&self) -> usize {
-        self.columns.len()
-    }
-    pub(crate) fn num_docs(&self) -> usize {
-        self.num_docs
     }
 }
 
@@ -122,14 +174,17 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
     let mut term_hash_map = ArenaHashMap::with_capacity(4);
     let mut preliminary_docs: FnvHashMap<u64, PrelimDocGroup> = FnvHashMap::default();
 
+    let mut tokens = Vec::new();
     for line in lines {
         let tokenizer = Tokenizer::new(&line);
-        let tokens = tokenizer.collect::<Vec<_>>();
+        tokens.extend(tokenizer);
         let fingerprint = fingerprint(&tokens);
-        preliminary_docs
+
+        let group = preliminary_docs
             .entry(fingerprint)
-            .or_default()
-            .push(&tokens, &line, &mut term_hash_map);
+            .or_insert_with(|| PrelimDocGroup::new(&tokens, &line, &mut term_hash_map));
+        group.push(&tokens, &line, &mut term_hash_map);
+        tokens.clear();
     }
 
     PreliminaryIndex {
@@ -147,9 +202,16 @@ pub struct PrelimDoc<'a> {
 impl<'a> PrelimDoc<'a> {
     pub fn iter(self) -> impl Iterator<Item = CompositeToken> + 'a {
         self.group
-            .columns
+            .template
+            .tokens
             .iter()
-            .map(move |column| column[self.doc_index])
+            .map(move |template_token| match template_token {
+                TemplateToken::Constant(ct) => *ct,
+                TemplateToken::Variable { column_index } => {
+                    self.group.columns[*column_index][self.doc_index]
+                }
+                TemplateToken::Whitespace(num) => CompositeToken::new(TokenType::Whitespace, *num),
+            })
     }
 
     pub fn without_whitespace(self) -> impl Iterator<Item = CompositeToken> + 'a {
