@@ -176,19 +176,21 @@ fn is_uuid(s: &str) -> bool {
         return false;
     }
 
-    // Check for hyphens at correct positions and hex digits elsewhere
-    (bytes[8] == b'-' &&
-     bytes[13] == b'-' &&
-     bytes[18] == b'-' &&
-     bytes[23] == b'-') &&
-
-    // Check all other characters are hex digits
-    bytes.iter().enumerate().all(|(i, &c)| {
+    for (i, &b) in bytes.iter().enumerate() {
         match i {
-            8 | 13 | 18 | 23 => c == b'-',
-            _ => c.is_ascii_hexdigit(),
+            8 | 13 | 18 | 23 => {
+                if b != b'-' {
+                    return false;
+                }
+            }
+            _ => {
+                if !b.is_ascii_hexdigit() {
+                    return false;
+                }
+            }
         }
-    })
+    }
+    true
 }
 
 /// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
