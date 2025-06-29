@@ -4,5 +4,6 @@ pub mod patterns;
 pub mod prelim_index;
 pub mod remapping;
 pub mod search;
+pub mod termmap;
 pub mod tokenizer;
 pub use tokenizer::Token;

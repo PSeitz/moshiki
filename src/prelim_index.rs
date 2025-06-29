@@ -1,9 +1,9 @@
 use crate::{
     fingerprint::fingerprint,
+    termmap::IndexingTermmap,
     tokenizer::{Token, TokenType, Tokenizer},
 };
 use fnv::FnvHashMap;
-use stacker::ArenaHashMap;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TemplateToken {
@@ -30,7 +30,7 @@ pub struct Template {
 }
 
 pub struct PreliminaryIndex {
-    pub term_hash_map: ArenaHashMap,
+    pub term_hash_map: IndexingTermmap,
     pub preliminary_docs: FnvHashMap<u64, PrelimDocGroup>,
 }
 
@@ -44,7 +44,7 @@ pub struct PrelimDocGroup {
 fn create_composite_token(
     token: &Token,
     line: &str,
-    term_hash_map: &mut ArenaHashMap,
+    term_hash_map: &mut IndexingTermmap,
 ) -> CompositeToken {
     let next_id = term_hash_map.len() as u32;
     match token {
@@ -66,7 +66,7 @@ fn create_composite_token(
 }
 
 impl PrelimDocGroup {
-    pub fn new(tokens: &[Token], line: &str, term_hash_map: &mut ArenaHashMap) -> Self {
+    pub fn new(tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) -> Self {
         let template_tokens = tokens
             .iter()
             .map(|token| match token {
@@ -98,7 +98,7 @@ impl PrelimDocGroup {
         })
     }
 
-    fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut ArenaHashMap) {
+    fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) {
         // Compare with template and update if necessary
         for (i, ct) in tokens.iter().enumerate() {
             let ct = create_composite_token(ct, line, term_hash_map);
@@ -182,7 +182,7 @@ impl From<(TokenType, u32)> for CompositeToken {
 }
 
 pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryIndex {
-    let mut term_hash_map = ArenaHashMap::with_capacity(4);
+    let mut term_hash_map = IndexingTermmap::default();
     let mut preliminary_docs: FnvHashMap<u64, PrelimDocGroup> = FnvHashMap::default();
 
     let mut tokens = Vec::new();

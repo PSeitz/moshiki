@@ -20,8 +20,7 @@ pub enum TemplatePart {
 
 pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<TemplateAndDocs> {
     let mut term_id_to_term_map: Vec<&[u8]> = vec![&[]; index.term_hash_map.len()];
-    for (term_bytes, old_id_addr) in index.term_hash_map.iter() {
-        let old_id: u32 = index.term_hash_map.read(old_id_addr);
+    for (term_bytes, old_id) in index.term_hash_map.iter() {
         term_id_to_term_map[old_id as usize] = term_bytes;
     }
 

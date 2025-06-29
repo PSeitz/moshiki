@@ -1,12 +1,11 @@
 use fst::MapBuilder;
-use stacker::ArenaHashMap;
 use std::{
     fs::File,
     io::{self, BufWriter, Write},
     path::Path,
 };
 
-use crate::{patterns::pattern_scan, prelim_index::preliminary_index};
+use crate::{patterns::pattern_scan, prelim_index::preliminary_index, termmap::IndexingTermmap};
 
 pub struct IndexWriter {
     output_folder: String,
@@ -43,12 +42,12 @@ impl IndexWriter {
 
     pub fn write_dictionary_and_generate_mapping(
         &self,
-        term_hash_map: &ArenaHashMap,
+        term_hash_map: &IndexingTermmap,
     ) -> io::Result<Vec<u32>> {
         let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
         let max_old_id = term_hash_map.len() as u32;
-        for (term_bytes, old_id_addr) in term_hash_map.iter() {
-            let old_id: u32 = term_hash_map.read(old_id_addr);
+        for (term_bytes, old_id) in term_hash_map.iter() {
+            //let old_id: u32 = term_hash_map.read(old_id_addr);
             sorted_terms.push((term_bytes, old_id));
         }
         sorted_terms.sort_by(|(term_a, _), (term_b, _)| term_a.cmp(term_b));
