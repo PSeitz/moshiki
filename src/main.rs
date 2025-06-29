@@ -38,4 +38,3 @@ fn main() {
         (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64()
     );
 }
-

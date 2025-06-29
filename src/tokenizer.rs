@@ -98,6 +98,21 @@ impl Token {
             Token::Whitespace(_) => None,
         }
     }
+
+    pub(crate) fn is_whitespace(&self) -> bool {
+        matches!(self, Token::Whitespace(_))
+    }
+
+    pub(crate) fn len(&self) -> u32 {
+        match self {
+            Token::Word(r)
+            | Token::Number(r)
+            | Token::IPv4(r)
+            | Token::Uuid(r)
+            | Token::Punctuation(r) => r.end - r.start,
+            Token::Whitespace(len) => *len,
+        }
+    }
 }
 
 /// Quick IPv4 check: four octets 0–255
@@ -279,7 +294,8 @@ mod tests {
             ":",
             "50010",
         ];
-        let expected_types = [TokenType::Word,
+        let expected_types = [
+            TokenType::Word,
             TokenType::Punctuation,
             TokenType::Whitespace,
             TokenType::Punctuation,
@@ -294,7 +310,8 @@ mod tests {
             TokenType::Punctuation,
             TokenType::IPv4,
             TokenType::Punctuation,
-            TokenType::Number];
+            TokenType::Number,
+        ];
 
         for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
             assert_eq!(tok.token_type(), expected_types[i]);
@@ -327,19 +344,21 @@ mod tests {
             " ",
             "terminating",
         ];
-        let expected_types = [TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
+        let expected_types = [
             TokenType::Word,
             TokenType::Punctuation,
             TokenType::Whitespace,
             TokenType::Word,
             TokenType::Punctuation,
             TokenType::Word,
+            TokenType::Punctuation,
             TokenType::Whitespace,
-            TokenType::Word];
+            TokenType::Word,
+            TokenType::Punctuation,
+            TokenType::Word,
+            TokenType::Whitespace,
+            TokenType::Word,
+        ];
 
         for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
             assert_eq!(tok.token_type(), expected_types[i]);
@@ -421,7 +440,8 @@ mod tests {
             "3374681",
         ];
 
-        let expected_types = [TokenType::Word,
+        let expected_types = [
+            TokenType::Word,
             TokenType::Punctuation,
             TokenType::Whitespace,
             TokenType::Punctuation,
@@ -480,7 +500,8 @@ mod tests {
             TokenType::Word,
             TokenType::Punctuation,
             TokenType::Whitespace,
-            TokenType::Number];
+            TokenType::Number,
+        ];
 
         for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
             assert_eq!(tok.token_type(), expected_types[i]);

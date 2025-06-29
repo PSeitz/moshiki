@@ -22,7 +22,22 @@ pub fn fingerprint2(prelim_doc: &PrelimDoc) -> u64 {
     fingerprint
 }
 
-pub fn fingerprint(prelim_doc: &PrelimDoc) -> u64 {
+pub fn fingerprint(tokens: &[Token]) -> u64 {
+    let mut hasher = FxHasher::default();
+    for token in tokens {
+        (token.token_type() as u64).hash(&mut hasher);
+        match token {
+            Token::Whitespace(num) => {
+                num.hash(&mut hasher);
+            }
+            _ => {}
+        }
+    }
+
+    hasher.finish()
+}
+
+pub fn fingerprint3(prelim_doc: &PrelimDoc) -> u64 {
     let mut hasher = FxHasher::default();
     let mut num_tokens = 0;
     for token in prelim_doc.without_whitespace() {

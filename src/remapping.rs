@@ -49,8 +49,11 @@ mod tests {
             .write_dictionary_and_generate_mapping(&prelim_index.term_hash_map)
             .unwrap();
 
-        let mut docs_vec: Vec<Vec<PrelimDoc>> =
-            prelim_index.preliminary_docs.values().cloned().collect();
+        let mut docs_vec: Vec<Vec<PrelimDoc>> = prelim_index
+            .preliminary_docs
+            .values()
+            .map(|el| el.docs.clone())
+            .collect();
         remap_term_ids(&mut docs_vec, &old_to_new_id_map);
 
         let mut remapped_tokens = Vec::new();

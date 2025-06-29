@@ -1,18 +1,66 @@
-use fnv::{FnvHashMap, FnvHasher};
+use fnv::FnvHashMap;
 use stacker::ArenaHashMap;
-use std::hash::Hasher;
 
-use crate::tokenizer::{Token, TokenType, Tokenizer};
+use crate::{
+    fingerprint::fingerprint,
+    tokenizer::{Token, TokenType, Tokenizer},
+};
 
 pub struct PreliminaryIndex {
     pub term_hash_map: ArenaHashMap,
-    pub preliminary_docs: FnvHashMap<u64, Vec<PrelimDoc>>,
+    pub preliminary_docs: FnvHashMap<u64, PrelimDocGroup>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PrelimDocGroup {
+    pub docs: Vec<PrelimDoc>,
+}
+impl PrelimDocGroup {
+    fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut ArenaHashMap) {
+        let mut token_type_with_term_ids: Vec<CompositeToken> = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            let next_id = term_hash_map.len() as u32;
+            match token {
+                Token::IPv4(v)
+                | Token::Number(v)
+                | Token::Uuid(v)
+                | Token::Word(v)
+                | Token::Punctuation(v) => {
+                    let mut term_id = 0;
+                    let term_slice = &line[v.start as usize..v.end as usize];
+                    term_hash_map.mutate_or_create(term_slice.as_bytes(), |opt| {
+                        term_id = opt.unwrap_or(next_id);
+                        term_id
+                    });
+                    token_type_with_term_ids.push((token.token_type(), term_id).into());
+                }
+                Token::Whitespace(num) => {
+                    token_type_with_term_ids.push((token.token_type(), *num).into());
+                }
+            }
+        }
+
+        dbg!(&token_type_with_term_ids);
+        self.docs.push(PrelimDoc(token_type_with_term_ids));
+    }
 }
 
 // A 32-bit composite: top 4 bits store token type, lower 28 bits store term ID
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompositeToken(u32);
+
+impl std::fmt::Debug for CompositeToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Display both the token type and term ID
+        write!(
+            f,
+            "CompositeToken(type: {:?}, term_id: {})",
+            self.token_type(),
+            self.term_id()
+        )
+    }
+}
 
 impl CompositeToken {
     /// Pack a TokenType (4 bits) and a 28-bit ID into one u32
@@ -51,46 +99,16 @@ impl From<(TokenType, u32)> for CompositeToken {
 
 pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryIndex {
     let mut term_hash_map = ArenaHashMap::with_capacity(4);
-    let mut preliminary_docs: FnvHashMap<u64, Vec<PrelimDoc>> = FnvHashMap::default();
+    let mut preliminary_docs: FnvHashMap<u64, PrelimDocGroup> = FnvHashMap::default();
 
     for line in lines {
-        let mut token_type_with_term_ids: Vec<CompositeToken> = Vec::with_capacity(32);
         let tokenizer = Tokenizer::new(&line);
-        for token in tokenizer {
-            let next_id = term_hash_map.len() as u32;
-            match token {
-                Token::IPv4(ref v)
-                | Token::Number(ref v)
-                | Token::Uuid(ref v)
-                | Token::Word(ref v)
-                | Token::Punctuation(ref v) => {
-                    let mut term_id = 0;
-                    let term_slice = &line[v.start as usize..v.end as usize];
-                    term_hash_map.mutate_or_create(term_slice.as_bytes(), |opt| {
-                        term_id = opt.unwrap_or(next_id);
-                        term_id
-                    });
-                    token_type_with_term_ids.push((token.token_type(), term_id).into());
-                }
-                Token::Whitespace(num) => {
-                    token_type_with_term_ids.push((token.token_type(), num).into());
-                }
-            }
-        }
-
-        let prelim_doc = PrelimDoc(token_type_with_term_ids);
-        let mut hasher = FnvHasher::default();
-        for token in prelim_doc.iter() {
-            hasher.write_u8(token.token_type() as u8);
-            // To distinguish documents with different whitespace, we include the
-            // number of whitespace tokens
-            if token.token_type().is_whitespace() {
-                hasher.write_u32(token.term_id());
-            }
-        }
-        let hash = hasher.finish();
-
-        preliminary_docs.entry(hash).or_default().push(prelim_doc);
+        let tokens = tokenizer.collect::<Vec<_>>();
+        let fingerprint = fingerprint(&tokens);
+        preliminary_docs
+            .entry(fingerprint)
+            .or_default()
+            .push(&tokens, &line, &mut term_hash_map);
     }
 
     PreliminaryIndex {

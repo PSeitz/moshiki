@@ -57,11 +57,11 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
 
     let mut next_template_id = TemplateIdProvider::new();
     for docs_vec in index.preliminary_docs.values() {
-        if docs_vec.is_empty() {
+        if docs_vec.docs.is_empty() {
             continue;
         }
         let new_template_and_docs = split_and_detect_templates(
-            docs_vec,
+            &docs_vec.docs,
             &term_id_to_term_map,
             &mut next_template_id,
             old_to_new_id_map,
