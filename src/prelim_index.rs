@@ -207,10 +207,11 @@ pub fn check_is_id_like(column: &[u32], num_docs: usize) -> bool {
     true // All IDs are unique
 }
 
-// A 32-bit composite: top 4 bits store token type, lower 28 bits store term ID
-#[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CompositeToken(u32);
+pub struct CompositeToken {
+    token_type: TokenType,
+    term_id: u32,
+}
 
 impl std::fmt::Debug for CompositeToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -228,28 +229,22 @@ impl CompositeToken {
     /// Pack a TokenType (4 bits) and a 28-bit ID into one u32
     #[inline]
     pub fn new(token_type: TokenType, term_id: u32) -> Self {
-        // Ensure id fits in 28 bits
-        assert!(term_id <= 0x0FFF_FFFF, "term ID out of range");
-        let tt = (token_type as u32) & 0xF;
-        CompositeToken((tt << 28) | term_id)
+        CompositeToken {
+            token_type,
+            term_id,
+        }
     }
 
     /// Extract the TokenType from the top 4 bits
     #[inline]
     pub fn token_type(&self) -> TokenType {
-        let token_type = ((self.0 >> 28) & 0xF) as u8;
-        token_type.into()
+        self.token_type
     }
 
     /// Extract the 28-bit term ID
-    pub fn term_id(&self) -> u32 {
-        self.0 & 0x0FFF_FFFF
-    }
-
-    /// Get the raw u32 value
     #[inline]
-    pub fn as_u32(&self) -> u32 {
-        self.0
+    pub fn term_id(&self) -> u32 {
+        self.term_id
     }
 }
 impl From<(TokenType, u32)> for CompositeToken {

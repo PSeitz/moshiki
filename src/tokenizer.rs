@@ -35,7 +35,7 @@ pub enum Token {
     Whitespace(u32),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[repr(u8)]
 pub enum TokenType {
     Word = 1,
