@@ -14,6 +14,10 @@ fn main() {
     let ndjson_file = &args[1];
     let output_folder = &args[2];
 
+    // Delete the output folder if it exists
+    if Path::new(output_folder).exists() {
+        fs::remove_dir_all(output_folder).expect("Failed to remove existing output folder");
+    }
     // Create the output folder if it doesn't exist
     if !Path::new(output_folder).exists() {
         fs::create_dir_all(output_folder).expect("Failed to create output folder");

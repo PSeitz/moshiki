@@ -58,7 +58,7 @@ impl TemplateToken {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Template {
+pub struct IndexingTemplate {
     pub tokens: Vec<TemplateTokenWithMeta>,
 }
 
@@ -69,7 +69,7 @@ pub struct PreliminaryIndex {
 
 #[derive(Debug, Clone)]
 pub struct PrelimDocGroup {
-    pub template: Template,
+    pub template: IndexingTemplate,
     // TODO: No need for composite_tokens here, we know the type and can derive it from the
     // template
     pub columns: Vec<Vec<u32>>,
@@ -144,7 +144,7 @@ impl PrelimDocGroup {
             .collect();
 
         Self {
-            template: Template {
+            template: IndexingTemplate {
                 tokens: template_tokens,
             },
             columns: Vec::new(),

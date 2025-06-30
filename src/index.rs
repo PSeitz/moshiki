@@ -49,7 +49,6 @@ impl IndexWriter {
         let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
         let max_old_id = term_hash_map.len() as u32;
         for (term_bytes, old_id) in term_hash_map.iter() {
-            //let old_id: u32 = term_hash_map.read(old_id_addr);
             sorted_terms.push((term_bytes, old_id));
         }
 

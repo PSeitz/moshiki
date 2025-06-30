@@ -1,4 +1,8 @@
-use crate::prelim_index::{PreliminaryIndex, TemplateToken};
+use fnv::FnvHashMap;
+
+use crate::prelim_index::{PrelimDocGroup, PreliminaryIndex, TemplateToken, TemplateTokenWithMeta};
+
+type TermIdMap<'a> = Vec<&'a [u8]>;
 
 #[derive(Debug)]
 pub struct TemplateAndDocs {
@@ -9,21 +13,7 @@ pub struct TemplateAndDocs {
 #[derive(Debug)]
 pub struct Template {
     pub template_id: u32,
-    pub parts: Vec<TemplatePart>,
-}
-
-#[derive(Debug)]
-pub enum TemplatePart {
-    Constant(String),
-    Placeholder(u32),
-}
-impl TemplatePart {
-    fn is_variable(&self) -> bool {
-        match self {
-            TemplatePart::Constant(_) => false,
-            TemplatePart::Placeholder(_) => true,
-        }
-    }
+    pub parts: Vec<TemplateTokenWithMeta>,
 }
 
 pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<TemplateAndDocs> {
@@ -36,40 +26,38 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
     let mut template_id_counter = 0;
 
     for group in index.preliminary_docs.values() {
-        let template_parts: Vec<TemplatePart> = group
-            .template
-            .tokens
-            .iter()
-            .filter_map(|tt| match &tt.token {
-                TemplateToken::Constant(ct) => {
-                    let term = String::from_utf8_lossy(term_id_to_term_map[ct.term_id() as usize])
-                        .to_string();
-                    Some(TemplatePart::Constant(term))
-                }
-                TemplateToken::Variable { column_index, .. } => {
-                    Some(TemplatePart::Placeholder(*column_index as u32))
-                }
-                TemplateToken::Whitespace(_) => None,
-            })
-            .collect();
+        let num_docs = group.num_docs;
+        if num_docs > 2_000_000 {
+            print_stats_group(group, &term_id_to_term_map);
+        }
 
         let mut term_ids = Vec::new();
-        for template in &template_parts {
+        for template_token in &group.template.tokens {
             // Skip constant columns or whitespace columns
-            match template {
-                TemplatePart::Constant(_) => continue,
-                TemplatePart::Placeholder(column_index) => {
-                    for term_id in &group.columns[*column_index as usize] {
+            match template_token.token {
+                TemplateToken::Variable {
+                    is_id_like: _,
+                    column_index,
+                } => {
+                    for term_id in &group.columns[column_index] {
                         term_ids.push(old_to_new_id_map[*term_id as usize]);
                     }
                 }
+                _ => continue,
             }
         }
+        // Write row
+        //for doc in 0..num_docs {
+        //for column in &group.columns {
+        //let term_id = &column[doc];
+        //term_ids.push(old_to_new_id_map[*term_id as usize]);
+        //}
+        //}
 
         template_and_docs.push(TemplateAndDocs {
             template: Template {
                 template_id: template_id_counter,
-                parts: template_parts,
+                parts: group.template.tokens.clone(),
             },
             docs_term_ids: term_ids,
         });
@@ -77,4 +65,47 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
     }
 
     template_and_docs
+}
+
+/// Calculates and prints term frequency statistics for large groups.
+fn print_stats_group(group: &PrelimDocGroup, term_id_to_term_map: &TermIdMap) {
+    let num_docs = group.num_docs;
+    println!("\n--- Stats for template with {} docs ---", num_docs);
+    for (col_idx, column_terms) in group.columns.iter().enumerate() {
+        let mut counts = FnvHashMap::default();
+        for &term_id in column_terms {
+            *counts.entry(term_id).or_insert(0) += 1;
+        }
+
+        let mut sorted_counts: Vec<_> = counts.into_iter().collect();
+        sorted_counts.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
+
+        println!(
+            "  Column {}: ({} unique terms)",
+            col_idx,
+            sorted_counts.len()
+        );
+        if sorted_counts.len() < 500 {
+            // Print histogram
+            //
+            // get the frist 5 percentages
+            let percentages: Vec<_> = sorted_counts
+                .iter()
+                .map(|(_, count)| (*count as f32 / num_docs as f32) * 100.0)
+                .collect();
+
+            let term_bytes = term_id_to_term_map[sorted_counts[0].0 as usize];
+            let term_string = String::from_utf8_lossy(term_bytes);
+            println!(
+                "    Top 5: ({})  Top:{term_string:?}: {}",
+                percentages
+                    .iter()
+                    .take(5)
+                    .map(|p| format!("{:.2}%", p))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                sorted_counts[0].1
+            );
+        }
+    }
 }
