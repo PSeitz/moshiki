@@ -28,7 +28,7 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
     for group in index.preliminary_docs.values() {
         let num_docs = group.num_docs;
         if num_docs > 2_000_000 {
-            print_stats_group(group, &term_id_to_term_map);
+            print_stats_group(group, template_id_counter, &term_id_to_term_map);
         }
 
         let mut term_ids = Vec::new();
@@ -39,6 +39,16 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
                     is_id_like: _,
                     column_index,
                 } => {
+                    //if is_id_like
+                    //&& template_id_counter == 22
+                    //&& (column_index == 0 || column_index == 1)
+                    //{
+                    //// Special case skip
+                    //println!(
+                    //"Template ID: {template_id_counter}, Column Index: {column_index}"
+                    //);
+                    //continue;
+                    //}
                     for term_id in &group.columns[column_index] {
                         term_ids.push(old_to_new_id_map[*term_id as usize]);
                     }
@@ -68,9 +78,13 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
 }
 
 /// Calculates and prints term frequency statistics for large groups.
-fn print_stats_group(group: &PrelimDocGroup, term_id_to_term_map: &TermIdMap) {
+fn print_stats_group(
+    group: &PrelimDocGroup,
+    template_id_counter: u32,
+    term_id_to_term_map: &TermIdMap,
+) {
     let num_docs = group.num_docs;
-    println!("\n--- Stats for template with {} docs ---", num_docs);
+    println!("\n--- Stats for template {template_id_counter} with {num_docs} docs ---");
     for (col_idx, column_terms) in group.columns.iter().enumerate() {
         let mut counts = FnvHashMap::default();
         for &term_id in column_terms {
