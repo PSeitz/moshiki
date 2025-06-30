@@ -15,7 +15,15 @@ pub struct Template {
 #[derive(Debug)]
 pub enum TemplatePart {
     Constant(String),
-    Placeholder,
+    Placeholder(u32),
+}
+impl TemplatePart {
+    fn is_variable(&self) -> bool {
+        match self {
+            TemplatePart::Constant(_) => false,
+            TemplatePart::Placeholder(_) => true,
+        }
+    }
 }
 
 pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<TemplateAndDocs> {
@@ -38,20 +46,23 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
                         .to_string();
                     Some(TemplatePart::Constant(term))
                 }
-                TemplateToken::Variable { .. } => Some(TemplatePart::Placeholder),
+                TemplateToken::Variable { column_index, .. } => {
+                    Some(TemplatePart::Placeholder(*column_index as u32))
+                }
                 TemplateToken::Whitespace(_) => None,
             })
             .collect();
 
-        let mut docs_ids = Vec::new();
-        for (column_pos, column) in group.columns.iter().enumerate() {
+        let mut term_ids = Vec::new();
+        for template in &template_parts {
             // Skip constant columns or whitespace columns
-            if !group.template.tokens[column_pos].is_variable() {
-                continue;
-            }
-
-            for term_id in column {
-                docs_ids.push(old_to_new_id_map[term_id.term_id() as usize]);
+            match template {
+                TemplatePart::Constant(_) => continue,
+                TemplatePart::Placeholder(column_index) => {
+                    for term_id in &group.columns[*column_index as usize] {
+                        term_ids.push(old_to_new_id_map[term_id.term_id() as usize]);
+                    }
+                }
             }
         }
 
@@ -60,7 +71,7 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
                 template_id: template_id_counter,
                 parts: template_parts,
             },
-            docs_term_ids: docs_ids,
+            docs_term_ids: term_ids,
         });
         template_id_counter += 1;
     }

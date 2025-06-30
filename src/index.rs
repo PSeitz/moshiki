@@ -18,9 +18,11 @@ impl IndexWriter {
 
     pub fn index(&self, lines: impl Iterator<Item = String>) {
         let preliminary_index = preliminary_index(lines);
-        let old_to_new_id_map = self
-            .write_dictionary_and_generate_mapping(&preliminary_index.term_hash_map)
-            .unwrap();
+        let old_to_new_id_map = Self::write_dictionary_and_generate_mapping(
+            &self.output_folder,
+            &preliminary_index.term_hash_map,
+        )
+        .unwrap();
 
         let templates_and_docs = pattern_scan(&preliminary_index, &old_to_new_id_map);
 
@@ -41,7 +43,7 @@ impl IndexWriter {
     }
 
     pub fn write_dictionary_and_generate_mapping(
-        &self,
+        output_folder: &str,
         term_hash_map: &IndexingTermmap,
     ) -> io::Result<Vec<u32>> {
         let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
@@ -54,7 +56,7 @@ impl IndexWriter {
         sorted_terms.sort_by(|(term_a, _), (term_b, _)| term_a.cmp(term_b));
 
         let mut old_to_new_id_map: Vec<u32> = vec![0; (max_old_id + 1) as usize];
-        let dictionary_path = Path::new(&self.output_folder).join("dictionary.fst");
+        let dictionary_path = Path::new(output_folder).join("dictionary.fst");
         let wtr = BufWriter::new(File::create(dictionary_path)?);
         let mut map_builder = MapBuilder::new(wtr).map_err(io::Error::other)?;
 
@@ -75,5 +77,45 @@ impl IndexWriter {
         }
         map_builder.finish().map_err(io::Error::other)?;
         Ok(old_to_new_id_map)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{index::IndexWriter, patterns::pattern_scan, prelim_index::preliminary_index};
+
+    #[test]
+    fn test_mini_index() {
+        let tempfolder = tempfile::tempdir().unwrap();
+        //let writer = IndexWriter::new(tempfolder.path().to_str().unwrap().to_string());
+        let lines = vec![r#"aaa ccc"#.to_string(), r#"aaa bbb"#.to_string()];
+        let preliminary_index = preliminary_index(lines.into_iter());
+
+        // Check that our docs are in the preliminary index
+        let vals = preliminary_index.preliminary_docs.values().next().unwrap();
+        assert_eq!(vals.columns.len(), 1, "Should have one column");
+        assert_eq!(vals.num_docs, 2, "Should have two documents");
+        assert_eq!(vals.columns[0].len(), 2, "Column should have two entries");
+
+        let old_to_new_id_map = IndexWriter::write_dictionary_and_generate_mapping(
+            tempfolder.path().to_str().unwrap(),
+            &preliminary_index.term_hash_map,
+        )
+        .unwrap();
+
+        let templates_and_docs = pattern_scan(&preliminary_index, &old_to_new_id_map);
+        assert!(
+            !templates_and_docs.is_empty(),
+            "Templates and docs should not be empty"
+        );
+        assert_eq!(templates_and_docs.len(), 1, "Should have one template");
+        // Reconstruct
+        let template = &templates_and_docs[0];
+        assert_eq!(
+            template.docs_term_ids.len(),
+            2,
+            "Should have two docs term IDs"
+        );
+        assert_eq!(template.docs_term_ids, &[2, 1], "Term IDs should match");
     }
 }

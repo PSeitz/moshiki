@@ -48,10 +48,11 @@ mod tests {
         ];
         let mut prelim_index = preliminary_index(lines.into_iter());
         let dir = tempdir().unwrap();
-        let index_writer = IndexWriter::new(dir.path().to_str().unwrap().to_string());
-        let old_to_new_id_map = index_writer
-            .write_dictionary_and_generate_mapping(&prelim_index.term_hash_map)
-            .unwrap();
+        let old_to_new_id_map = IndexWriter::write_dictionary_and_generate_mapping(
+            dir.path().to_str().unwrap(),
+            &prelim_index.term_hash_map,
+        )
+        .unwrap();
 
         remap_term_ids(&mut prelim_index.preliminary_docs, &old_to_new_id_map);
 
@@ -79,10 +80,11 @@ mod tests {
         ];
         let prelim_index = preliminary_index(lines.into_iter());
         let dir = tempdir().unwrap();
-        let index_writer = IndexWriter::new(dir.path().to_str().unwrap().to_string());
-        let _old_to_new_id_map = index_writer
-            .write_dictionary_and_generate_mapping(&prelim_index.term_hash_map)
-            .unwrap();
+        let _old_to_new_id_map = IndexWriter::write_dictionary_and_generate_mapping(
+            dir.path().to_str().unwrap(),
+            &prelim_index.term_hash_map,
+        )
+        .unwrap();
 
         let dict_path = dir.path().join("dictionary.fst");
         let mut f = File::open(dict_path).unwrap();
