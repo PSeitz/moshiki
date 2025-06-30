@@ -6,11 +6,18 @@ use crate::{
 use fnv::FnvHashMap;
 
 #[derive(Debug, Clone)]
+pub struct TemplateTokenWithMeta {
+    pub token: TemplateToken,
+    /// This is the index in the token sequence
+    pub token_index: u32,
+}
+
+#[derive(Debug, Clone)]
 pub enum TemplateToken {
     Constant(ConstTemplateToken),
     Variable {
-        column_index: usize,
         is_id_like: bool,
+        column_index: usize,
     },
     Whitespace(u32),
 }
@@ -51,7 +58,7 @@ impl TemplateToken {
 
 #[derive(Debug, Clone, Default)]
 pub struct Template {
-    pub tokens: Vec<TemplateToken>,
+    pub tokens: Vec<TemplateTokenWithMeta>,
 }
 
 pub struct PreliminaryIndex {
@@ -64,7 +71,7 @@ pub struct PrelimDocGroup {
     pub template: Template,
     // TODO: No need for composite_tokens here, we know the type and can derive it from the
     // template
-    pub columns: Vec<Vec<CompositeToken>>,
+    pub columns: Vec<Vec<u32>>,
     pub num_docs: usize,
 }
 
@@ -88,23 +95,50 @@ fn create_composite_token(
     }
 }
 
+fn get_term_id(
+    token: &Token,
+    line: &str,
+    term_hash_map: &mut IndexingTermmap,
+    is_unique: bool,
+) -> u32 {
+    match token {
+        Token::IPv4(v)
+        | Token::Number(v)
+        | Token::Uuid(v)
+        | Token::Word(v)
+        | Token::Punctuation(v) => {
+            let term_slice = &line[v.start as usize..v.end as usize];
+            term_hash_map.mutate_or_create(term_slice, is_unique)
+        }
+        Token::Whitespace(num) => *num,
+    }
+}
+
 impl PrelimDocGroup {
+    #[cold]
     pub fn new(tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) -> Self {
         let template_tokens = tokens
             .iter()
-            .map(|token| match token {
+            .enumerate()
+            .map(|(token_pos, token)| match token {
                 Token::IPv4(_)
                 | Token::Number(_)
                 | Token::Uuid(_)
                 | Token::Word(_)
                 | Token::Punctuation(_) => {
                     let ct = create_composite_token(token, line, term_hash_map, false);
-                    TemplateToken::Constant(ConstTemplateToken::new(
-                        ct,
-                        token.as_str(line).unwrap(),
-                    ))
+                    TemplateTokenWithMeta {
+                        token: TemplateToken::Constant(ConstTemplateToken::new(
+                            ct,
+                            token.as_str(line).unwrap(),
+                        )),
+                        token_index: token_pos as u32,
+                    }
                 }
-                Token::Whitespace(num) => TemplateToken::Whitespace(*num),
+                Token::Whitespace(num) => TemplateTokenWithMeta {
+                    token: TemplateToken::Whitespace(*num),
+                    token_index: token_pos as u32,
+                },
             })
             .collect();
 
@@ -117,44 +151,40 @@ impl PrelimDocGroup {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = PrelimDoc<'_>> + '_ {
-        (0..self.num_docs).map(move |i| PrelimDoc {
-            group: self,
-            doc_index: i,
-        })
-    }
-
+    #[inline]
     fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) {
         // Compare with template and update if necessary
         // TODO: fast path here to quickly hashcheck all the constants.
-        for (i, ct) in tokens.iter().enumerate() {
-            let template_token = &mut self.template.tokens[i];
-            match template_token {
+        for template_token in &mut self.template.tokens {
+            match &mut template_token.token {
                 TemplateToken::Constant(existing_ct) => {
-                    let token_text = ct.as_str(line).unwrap();
+                    let token = &tokens[template_token.token_index as usize];
+                    let token_text = token.as_str(line).unwrap();
                     if existing_ct.text != token_text {
-                        let ct = create_composite_token(ct, line, term_hash_map, false);
+                        let ct = get_term_id(token, line, term_hash_map, false);
                         // This position is now variable
                         let column_index = self.columns.len();
-                        let mut new_column = vec![existing_ct.composite_token; self.num_docs];
+                        let mut new_column =
+                            vec![existing_ct.composite_token.term_id(); self.num_docs];
                         new_column.push(ct);
                         self.columns.push(new_column);
-                        *template_token = TemplateToken::new_variable(column_index);
+                        template_token.token = TemplateToken::new_variable(column_index);
                     }
                 }
                 TemplateToken::Variable {
                     column_index,
                     is_id_like,
                 } => {
-                    let ct = create_composite_token(ct, line, term_hash_map, *is_id_like);
-                    self.columns[*column_index].push(ct);
+                    let token = &tokens[template_token.token_index as usize];
+                    let term_id = get_term_id(token, line, term_hash_map, *is_id_like);
+                    self.columns[*column_index].push(term_id);
                     if self.num_docs == 1000 {
                         // We can check if this column is ID-like == all term IDs are different
                         // is_id_like is currently set false, so we only set it to true if we find all unique
                         // IDs
                         let mut seen_ids = std::collections::HashSet::new();
-                        for token in &self.columns[*column_index] {
-                            if !seen_ids.insert(token.term_id()) {
+                        for term_id in &self.columns[*column_index] {
+                            if !seen_ids.insert(term_id) {
                                 // Found a duplicate, so this column is not ID-like
                                 *is_id_like = false;
                                 break;
@@ -250,33 +280,23 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct PrelimDoc<'a> {
-    group: &'a PrelimDocGroup,
-    doc_index: usize,
-}
+//impl<'a> PrelimDoc<'a> {
+//pub fn iter(self) -> impl Iterator<Item = CompositeToken> + 'a {
+//self.group
+//.template
+//.tokens
+//.iter()
+//.map(move |template_token| match &template_token.token {
+//TemplateToken::Constant(ct) => ct.composite_token,
+//TemplateToken::Variable { column_index, .. } => {
+//self.group.columns[*column_index][self.doc_index]
+//}
+//TemplateToken::Whitespace(num) => CompositeToken::new(TokenType::Whitespace, *num),
+//})
+//}
 
-impl<'a> PrelimDoc<'a> {
-    pub fn iter(self) -> impl Iterator<Item = CompositeToken> + 'a {
-        self.group
-            .template
-            .tokens
-            .iter()
-            .map(move |template_token| match template_token {
-                TemplateToken::Constant(ct) => ct.composite_token,
-                TemplateToken::Variable { column_index, .. } => {
-                    self.group.columns[*column_index][self.doc_index]
-                }
-                TemplateToken::Whitespace(num) => CompositeToken::new(TokenType::Whitespace, *num),
-            })
-    }
-
-    pub fn without_whitespace(self) -> impl Iterator<Item = CompositeToken> + 'a {
-        self.iter()
-            .filter(|token| !token.token_type().is_whitespace())
-    }
-
-    pub fn token_at(self, column_index: usize) -> CompositeToken {
-        self.group.columns[column_index][self.doc_index]
-    }
-}
+//pub fn without_whitespace(self) -> impl Iterator<Item = CompositeToken> + 'a {
+//self.iter()
+//.filter(|token| !token.token_type().is_whitespace())
+//}
+//}

@@ -40,7 +40,7 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
             .template
             .tokens
             .iter()
-            .filter_map(|tt| match tt {
+            .filter_map(|tt| match &tt.token {
                 TemplateToken::Constant(ct) => {
                     let term = String::from_utf8_lossy(term_id_to_term_map[ct.term_id() as usize])
                         .to_string();
@@ -60,7 +60,7 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
                 TemplatePart::Constant(_) => continue,
                 TemplatePart::Placeholder(column_index) => {
                     for term_id in &group.columns[*column_index as usize] {
-                        term_ids.push(old_to_new_id_map[term_id.term_id() as usize]);
+                        term_ids.push(old_to_new_id_map[*term_id as usize]);
                     }
                 }
             }
