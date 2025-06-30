@@ -4,6 +4,7 @@ use crate::{
     tokenizer::{Token, TokenType, Tokenizer},
 };
 use fnv::FnvHashMap;
+use stacker::fastcmp::fast_short_slice_compare;
 
 #[derive(Debug, Clone)]
 pub struct TemplateTokenWithMeta {
@@ -159,8 +160,8 @@ impl PrelimDocGroup {
             match &mut template_token.token {
                 TemplateToken::Constant(existing_ct) => {
                     let token = &tokens[template_token.token_index as usize];
-                    let token_text = token.as_str(line).unwrap();
-                    if existing_ct.text != token_text {
+                    let token_bytes = token.as_bytes(line).unwrap();
+                    if !fast_short_slice_compare(existing_ct.text.as_bytes(), token_bytes) {
                         let ct = get_term_id(token, line, term_hash_map, false);
                         // This position is now variable
                         let column_index = self.columns.len();
@@ -179,21 +180,7 @@ impl PrelimDocGroup {
                     let term_id = get_term_id(token, line, term_hash_map, *is_id_like);
                     self.columns[*column_index].push(term_id);
                     if self.num_docs == 1000 {
-                        // We can check if this column is ID-like == all term IDs are different
-                        // is_id_like is currently set false, so we only set it to true if we find all unique
-                        // IDs
-                        let mut seen_ids = std::collections::HashSet::new();
-                        for term_id in &self.columns[*column_index] {
-                            if !seen_ids.insert(term_id) {
-                                // Found a duplicate, so this column is not ID-like
-                                *is_id_like = false;
-                                break;
-                            }
-                        }
-                        if seen_ids.len() == self.columns[*column_index].len() {
-                            // All IDs are unique, so this column is ID-like
-                            *is_id_like = true;
-                        }
+                        *is_id_like = check_is_id_like(&self.columns[*column_index], self.num_docs);
                     }
                 }
                 TemplateToken::Whitespace(_) => {
@@ -203,6 +190,21 @@ impl PrelimDocGroup {
         }
         self.num_docs += 1;
     }
+}
+
+#[cold]
+/// TODO: The check could be done on a bitvec, since we probably have very few term IDs
+pub fn check_is_id_like(column: &[u32], num_docs: usize) -> bool {
+    if column.len() != num_docs {
+        return false; // Column length mismatch
+    }
+    let mut seen_ids = std::collections::HashSet::new();
+    for term_id in column {
+        if !seen_ids.insert(term_id) {
+            return false; // Found a duplicate, so not ID-like
+        }
+    }
+    true // All IDs are unique
 }
 
 // A 32-bit composite: top 4 bits store token type, lower 28 bits store term ID

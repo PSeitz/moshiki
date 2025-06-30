@@ -4,8 +4,8 @@
 extern crate test;
 
 mod arena_hashmap;
-mod fastcmp;
-mod fastcpy;
+pub mod fastcmp;
+pub mod fastcpy;
 mod memory_arena;
 mod shared_arena_hashmap;
 

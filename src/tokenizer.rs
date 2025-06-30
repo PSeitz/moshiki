@@ -99,6 +99,19 @@ impl Token {
         }
     }
 
+    #[inline]
+    /// Allows to remove some boundary checks
+    pub fn as_bytes<'a>(&self, input: &'a str) -> Option<&'a [u8]> {
+        match self {
+            Token::Word(r)
+            | Token::Number(r)
+            | Token::IPv4(r)
+            | Token::Uuid(r)
+            | Token::Punctuation(r) => Some(&(input.as_bytes()[r.start as usize..r.end as usize])),
+            Token::Whitespace(_) => None,
+        }
+    }
+
     #[allow(dead_code)]
     pub(crate) fn is_whitespace(&self) -> bool {
         matches!(self, Token::Whitespace(_))
@@ -282,20 +295,32 @@ impl<'a> Iterator for Tokenizer<'a> {
             self.pos += num_bytes as u32;
             Token::Uuid(start..self.pos)
         } else {
-            // 3) Word-like token: scan until next whitespace or punctuation (excluding '.', '-', '_')
-            let len = bytes
-                .iter()
-                .take_while(|&&b| {
-                    !(b.is_ascii_whitespace()
-                        || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_'))
-                })
-                .count();
+            let len = word_len(bytes);
 
             self.pos += len as u32;
             Token::Word(start..self.pos)
         };
         Some(token)
     }
+}
+
+#[inline(always)]
+fn word_len(bytes: &[u8]) -> usize {
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        // Fast-reject the common case first
+        if !b.is_ascii_uppercase() && !b.is_ascii_lowercase() && !b.is_ascii_digit() {
+            // Fall-back when we *might* have hit a delimiter
+            if b.is_ascii_whitespace()
+                || (b.is_ascii_punctuation() && !matches!(b, b'.' | b'-' | b'_'))
+            {
+                break;
+            }
+        }
+        i += 1;
+    }
+    i
 }
 
 #[cfg(test)]
