@@ -1,9 +1,9 @@
-use fst::MapBuilder;
 use std::{
     fs::File,
     io::{self, BufWriter, Write},
     path::Path,
 };
+use tantivy_sstable::MonotonicU64SSTable;
 
 use crate::{patterns::pattern_scan, prelim_index::preliminary_index, termmap::IndexingTermmap};
 
@@ -57,7 +57,10 @@ impl IndexWriter {
         let mut old_to_new_id_map: Vec<u32> = vec![0; (max_old_id + 1) as usize];
         let dictionary_path = Path::new(output_folder).join("dictionary.fst");
         let wtr = BufWriter::new(File::create(dictionary_path)?);
-        let mut map_builder = MapBuilder::new(wtr).map_err(io::Error::other)?;
+
+        let mut builder = tantivy_sstable::Dictionary::<MonotonicU64SSTable>::builder(wtr).unwrap();
+
+        //let mut map_builder = MapBuilder::new(wtr).map_err(io::Error::other)?;
 
         // We may have duplicate terms, so we need to ensure that we assign the same new ID to the
         // same term and not insert it multiple times.
@@ -71,10 +74,10 @@ impl IndexWriter {
             }
             previous_term = Some(term_bytes);
             old_to_new_id_map[old_id as usize] = new_id as u32;
-            map_builder.insert(term_bytes, new_id as u64).unwrap();
+            builder.insert(term_bytes, &(new_id as u64)).unwrap();
             new_id += 1;
         }
-        map_builder.finish().map_err(io::Error::other)?;
+        builder.finish().map_err(io::Error::other)?;
         Ok(old_to_new_id_map)
     }
 }

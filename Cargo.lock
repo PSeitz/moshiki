@@ -152,15 +152,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "fst"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ab85b9b05e3978cc9a9cf8fea7f01b494e1a09ed3037e16ba39edc7a29eb61a"
-dependencies = [
- "utf8-ranges",
-]
-
-[[package]]
 name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -338,11 +329,11 @@ version = "0.1.0"
 dependencies = [
  "binggan",
  "fnv",
- "fst",
  "fxhash",
  "memchr",
  "memmap2",
  "sstable",
+ "tantivy-common",
  "tantivy-sstable",
  "tantivy-stacker",
  "tempfile",

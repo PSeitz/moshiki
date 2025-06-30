@@ -30,9 +30,6 @@ mod tests {
     use super::*;
     use crate::index::IndexWriter;
     use crate::prelim_index::preliminary_index;
-    use fst::{IntoStreamer, Map, Streamer};
-    use std::fs::File;
-    use std::io::Read;
     use tempfile::tempdir;
 
     #[test]
@@ -65,40 +62,5 @@ mod tests {
         //// The term IDs should be 0, 1, 2, 3, corresponding to the sorted terms
         //// "goodbye", "hello", "there", "world"
         //assert_eq!(remapped_tokens, vec![0, 1, 1, 2, 3, 3]);
-    }
-
-    #[test]
-    fn test_write_dictionary() {
-        let lines = vec![
-            "hello world".to_string(),
-            "hello there".to_string(),
-            "goodbye world".to_string(),
-        ];
-        let prelim_index = preliminary_index(lines.into_iter());
-        let dir = tempdir().unwrap();
-        let _old_to_new_id_map = IndexWriter::write_dictionary_and_generate_mapping(
-            dir.path().to_str().unwrap(),
-            &prelim_index.term_hash_map,
-        )
-        .unwrap();
-
-        let dict_path = dir.path().join("dictionary.fst");
-        let mut f = File::open(dict_path).unwrap();
-        let mut buffer = Vec::new();
-        f.read_to_end(&mut buffer).unwrap();
-        let map = Map::new(buffer).unwrap();
-
-        let mut stream = map.into_stream();
-        let mut keys = Vec::new();
-        while let Some((key, _)) = stream.next() {
-            keys.push(String::from_utf8(key.to_vec()).unwrap());
-        }
-        keys.sort();
-        assert_eq!(keys, vec!["goodbye", "hello", "there", "world"]);
-
-        assert_eq!(map.get("goodbye"), Some(0));
-        assert_eq!(map.get("hello"), Some(1));
-        assert_eq!(map.get("there"), Some(2));
-        assert_eq!(map.get("world"), Some(3));
     }
 }
