@@ -32,7 +32,7 @@ impl IndexWriter {
                 byte_buffer.extend_from_slice(&term_id.to_le_bytes());
             }
 
-            let compressed_data = zstd::stream::encode_all(&*byte_buffer, 13).unwrap();
+            let compressed_data = zstd::stream::encode_all(&*byte_buffer, 6).unwrap();
             let file_path = Path::new(&self.output_folder).join(format!(
                 "template_{}.zst",
                 template_and_doc.template.template_id
