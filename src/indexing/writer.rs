@@ -87,7 +87,7 @@ impl IndexWriter {
 
 #[cfg(test)]
 mod test {
-    use crate::indexing::{pattern_detection::pattern_scan, preliminary_index, IndexWriter};
+    use crate::indexing::{IndexWriter, pattern_detection::pattern_scan, preliminary_index};
 
     #[test]
     fn test_mini_index() {

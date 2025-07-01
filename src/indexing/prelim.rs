@@ -8,13 +8,13 @@ use super::{fingerprint, termmap::IndexingTermmap};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TemplateTokenWithMeta {
-    pub token: TemplateToken,
+    pub token: IndexingTemplateToken,
     /// This is the index in the token sequence
     pub token_index: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TemplateToken {
+pub enum IndexingTemplateToken {
     Constant(ConstTemplateToken),
     Variable {
         is_id_like: bool,
@@ -40,9 +40,9 @@ impl ConstTemplateToken {
     }
 }
 
-impl TemplateToken {
+impl IndexingTemplateToken {
     pub fn new_variable(column_index: usize) -> Self {
-        TemplateToken::Variable {
+        IndexingTemplateToken::Variable {
             column_index,
             is_id_like: false,
         }
@@ -50,9 +50,9 @@ impl TemplateToken {
 
     pub fn is_variable(&self) -> bool {
         match self {
-            TemplateToken::Constant(_) => false,
-            TemplateToken::Variable { .. } => true,
-            TemplateToken::Whitespace(_) => false,
+            IndexingTemplateToken::Constant(_) => false,
+            IndexingTemplateToken::Variable { .. } => true,
+            IndexingTemplateToken::Whitespace(_) => false,
         }
     }
 }
@@ -129,7 +129,7 @@ impl PrelimDocGroup {
                 | Token::Punctuation(_) => {
                     let ct = create_composite_token(token, line, term_hash_map, false);
                     TemplateTokenWithMeta {
-                        token: TemplateToken::Constant(ConstTemplateToken::new(
+                        token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
                             ct,
                             token.as_str(line).unwrap(),
                         )),
@@ -137,7 +137,7 @@ impl PrelimDocGroup {
                     }
                 }
                 Token::Whitespace(num) => TemplateTokenWithMeta {
-                    token: TemplateToken::Whitespace(*num),
+                    token: IndexingTemplateToken::Whitespace(*num),
                     token_index: token_pos as u32,
                 },
             })
@@ -158,7 +158,7 @@ impl PrelimDocGroup {
         // TODO: fast path here to quickly hashcheck all the constants.
         for template_token in &mut self.template.tokens {
             match &mut template_token.token {
-                TemplateToken::Constant(existing_ct) => {
+                IndexingTemplateToken::Constant(existing_ct) => {
                     let token = &tokens[template_token.token_index as usize];
                     let token_bytes = token.as_bytes(line).unwrap();
                     if !fast_short_slice_compare(existing_ct.text.as_bytes(), token_bytes) {
@@ -169,10 +169,10 @@ impl PrelimDocGroup {
                             vec![existing_ct.composite_token.term_id(); self.num_docs];
                         new_column.push(ct);
                         self.columns.push(new_column);
-                        template_token.token = TemplateToken::new_variable(column_index);
+                        template_token.token = IndexingTemplateToken::new_variable(column_index);
                     }
                 }
-                TemplateToken::Variable {
+                IndexingTemplateToken::Variable {
                     column_index,
                     is_id_like,
                 } => {
@@ -183,7 +183,7 @@ impl PrelimDocGroup {
                         *is_id_like = check_is_id_like(&self.columns[*column_index], self.num_docs);
                     }
                 }
-                TemplateToken::Whitespace(_) => {
+                IndexingTemplateToken::Whitespace(_) => {
                     // Whitespace is constant within a group
                 }
             }

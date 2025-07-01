@@ -1,18 +1,20 @@
 use fnv::FnvHashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::indexing::{PrelimDocGroup, PreliminaryIndex, TemplateToken, TemplateTokenWithMeta};
+use crate::indexing::{
+    IndexingTemplateToken, PrelimDocGroup, PreliminaryIndex, TemplateTokenWithMeta,
+};
 
 type TermIdMap<'a> = Vec<&'a [u8]>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TemplateAndDocs {
-    pub template: Template,
+    pub template: IndexingTemplate,
     pub docs_term_ids: Vec<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct Template {
+pub struct IndexingTemplate {
     pub template_id: u32,
     pub parts: Vec<TemplateTokenWithMeta>,
 }
@@ -36,7 +38,7 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
         for template_token in &group.template.tokens {
             // Skip constant columns or whitespace columns
             match template_token.token {
-                TemplateToken::Variable {
+                IndexingTemplateToken::Variable {
                     is_id_like: _,
                     column_index,
                 } => {
@@ -66,7 +68,7 @@ pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<
         //}
 
         template_and_docs.push(TemplateAndDocs {
-            template: Template {
+            template: IndexingTemplate {
                 template_id: template_id_counter,
                 parts: group.template.tokens.clone(),
             },
