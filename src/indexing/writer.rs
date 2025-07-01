@@ -1,11 +1,9 @@
-use std::{
-    fs::File,
-    io::{self, BufWriter, Write},
-    path::Path,
-};
-use tantivy_sstable::MonotonicU64SSTable;
+use std::{fs::File, io::Write, path::Path};
 
-use super::{pattern_detection::pattern_scan, prelim::preliminary_index, termmap::IndexingTermmap};
+use super::{
+    pattern_detection::pattern_scan, prelim::preliminary_index,
+    write_dict::write_dictionary_and_generate_mapping,
+};
 use crate::templates::write_templates;
 
 pub struct IndexWriter {
@@ -19,7 +17,7 @@ impl IndexWriter {
 
     pub fn index(&self, lines: impl Iterator<Item = String>) {
         let preliminary_index = preliminary_index(lines);
-        let old_to_new_id_map = Self::write_dictionary_and_generate_mapping(
+        let old_to_new_id_map = write_dictionary_and_generate_mapping(
             &self.output_folder,
             &preliminary_index.term_hash_map,
         )
@@ -44,50 +42,14 @@ impl IndexWriter {
             file.write_all(&compressed_data).unwrap();
         }
     }
-
-    pub fn write_dictionary_and_generate_mapping(
-        output_folder: &str,
-        term_hash_map: &IndexingTermmap,
-    ) -> io::Result<Vec<u32>> {
-        let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
-        let max_old_id = term_hash_map.len() as u32;
-        for (term_bytes, old_id) in term_hash_map.iter() {
-            sorted_terms.push((term_bytes, old_id));
-        }
-
-        sorted_terms.sort_by(|(term_a, _), (term_b, _)| term_a.cmp(term_b));
-
-        let mut old_to_new_id_map: Vec<u32> = vec![0; (max_old_id + 1) as usize];
-        let dictionary_path = Path::new(output_folder).join("dictionary.fst");
-        let wtr = BufWriter::new(File::create(dictionary_path)?);
-
-        let mut builder = tantivy_sstable::Dictionary::<MonotonicU64SSTable>::builder(wtr).unwrap();
-
-        //let mut map_builder = MapBuilder::new(wtr).map_err(io::Error::other)?;
-
-        // We may have duplicate terms, so we need to ensure that we assign the same new ID to the
-        // same term and not insert it multiple times.
-        let mut previous_term = None;
-        let mut new_id = 0;
-        for (term_bytes, old_id) in sorted_terms.into_iter() {
-            if previous_term == Some(term_bytes) {
-                // If the term is the same as the previous one, use the same new ID
-                old_to_new_id_map[old_id as usize] = new_id as u32;
-                continue;
-            }
-            previous_term = Some(term_bytes);
-            old_to_new_id_map[old_id as usize] = new_id as u32;
-            builder.insert(term_bytes, &(new_id as u64)).unwrap();
-            new_id += 1;
-        }
-        builder.finish().map_err(io::Error::other)?;
-        Ok(old_to_new_id_map)
-    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::indexing::{IndexWriter, pattern_detection::pattern_scan, preliminary_index};
+    use crate::indexing::{
+        pattern_detection::pattern_scan, preliminary_index,
+        write_dict::write_dictionary_and_generate_mapping,
+    };
 
     #[test]
     fn test_mini_index() {
@@ -102,7 +64,7 @@ mod test {
         assert_eq!(vals.num_docs, 2, "Should have two documents");
         assert_eq!(vals.columns[0].len(), 2, "Column should have two entries");
 
-        let old_to_new_id_map = IndexWriter::write_dictionary_and_generate_mapping(
+        let old_to_new_id_map = write_dictionary_and_generate_mapping(
             tempfolder.path().to_str().unwrap(),
             &preliminary_index.term_hash_map,
         )

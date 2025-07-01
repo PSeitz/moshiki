@@ -1,0 +1,129 @@
+use tantivy_sstable::{
+    MonotonicU64SSTable, SSTable,
+    value::{ValueReader, ValueWriter},
+};
+
+pub fn write_dictionary_and_generate_mapping(
+    output_folder: &str,
+    term_hash_map: &IndexingTermmap,
+) -> io::Result<Vec<u32>> {
+    let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
+    let max_old_id = term_hash_map.len() as u32;
+    for (term_bytes, old_id) in term_hash_map.iter() {
+        sorted_terms.push((term_bytes, old_id));
+    }
+
+    sorted_terms.sort_by(|(term_a, _), (term_b, _)| term_a.cmp(term_b));
+
+    let mut old_to_new_id_map: Vec<u32> = vec![0; (max_old_id + 1) as usize];
+    let dictionary_path = Path::new(output_folder).join("dictionary.fst");
+    let wtr = BufWriter::new(File::create(dictionary_path)?);
+
+    let mut builder = tantivy_sstable::Dictionary::<MonotonicU64SSTable>::builder(wtr).unwrap();
+
+    //let mut map_builder = MapBuilder::new(wtr).map_err(io::Error::other)?;
+
+    // We may have duplicate terms, so we need to ensure that we assign the same new ID to the
+    // same term and not insert it multiple times.
+    let mut previous_term = None;
+    let mut new_id = 0;
+    for (term_bytes, old_id) in sorted_terms.into_iter() {
+        if previous_term == Some(term_bytes) {
+            // If the term is the same as the previous one, use the same new ID
+            old_to_new_id_map[old_id as usize] = new_id as u32;
+            continue;
+        }
+        previous_term = Some(term_bytes);
+        old_to_new_id_map[old_id as usize] = new_id as u32;
+        builder.insert(term_bytes, &(new_id as u64)).unwrap();
+        new_id += 1;
+    }
+    builder.finish().map_err(io::Error::other)?;
+    Ok(old_to_new_id_map)
+}
+
+pub struct VecU32ValueSSTable;
+
+impl SSTable for VecU32ValueSSTable {
+    type Value = Vec<u32>;
+    type ValueReader = VecU32ValueReader;
+    type ValueWriter = VecU32ValueWriter;
+}
+
+use std::{
+    fs::File,
+    io::{self, BufWriter},
+    path::Path,
+};
+
+use super::termmap::IndexingTermmap;
+
+#[derive(Default)]
+pub struct VecU32ValueReader {
+    vals: Vec<Vec<u32>>,
+}
+
+impl ValueReader for VecU32ValueReader {
+    type Value = Vec<u32>;
+
+    #[inline(always)]
+    fn value(&self, idx: usize) -> &Self::Value {
+        &self.vals[idx]
+    }
+
+    fn load(&mut self, mut data: &[u8]) -> io::Result<usize> {
+        let original_num_bytes = data.len();
+        self.vals.clear();
+
+        // The first 4 bytes are the number of blocks
+        let num_blocks = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
+        data = &data[4..];
+
+        for _ in 0..num_blocks {
+            // Each block starts with a 4-byte length
+            let segment_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
+            data = &data[4..];
+
+            // Read the segment IDs for this block
+            let mut segment_ids = Vec::with_capacity(segment_len);
+            for _ in 0..segment_len {
+                let segment_id = u32::from_le_bytes(data[..4].try_into().unwrap());
+                segment_ids.push(segment_id);
+                data = &data[4..];
+            }
+            self.vals.push(segment_ids);
+        }
+
+        // Return the number of bytes consumed
+        Ok(original_num_bytes - data.len())
+    }
+}
+
+#[derive(Default)]
+pub struct VecU32ValueWriter {
+    vals: Vec<Vec<u32>>,
+}
+
+impl ValueWriter for VecU32ValueWriter {
+    type Value = Vec<u32>;
+
+    fn write(&mut self, val: &Self::Value) {
+        self.vals.push(val.to_vec());
+    }
+
+    fn serialize_block(&self, output: &mut Vec<u8>) {
+        let num_blocks = self.vals.len() as u32;
+        output.extend_from_slice(&num_blocks.to_le_bytes());
+        for vals in &self.vals {
+            let len = vals.len() as u32;
+            output.extend_from_slice(&len.to_le_bytes());
+            for &segment_id in vals.iter() {
+                output.extend_from_slice(&segment_id.to_le_bytes());
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.vals.clear();
+    }
+}

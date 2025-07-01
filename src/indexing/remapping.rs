@@ -28,7 +28,7 @@ pub fn remap_term_ids_in_template(template: &mut [CompositeToken], old_to_new_id
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::indexing::{IndexWriter, preliminary_index};
+    use crate::indexing::{preliminary_index, write_dict::write_dictionary_and_generate_mapping};
     use tempfile::tempdir;
 
     #[test]
@@ -40,7 +40,7 @@ mod tests {
         ];
         let mut prelim_index = preliminary_index(lines.into_iter());
         let dir = tempdir().unwrap();
-        let old_to_new_id_map = IndexWriter::write_dictionary_and_generate_mapping(
+        let old_to_new_id_map = write_dictionary_and_generate_mapping(
             dir.path().to_str().unwrap(),
             &prelim_index.term_hash_map,
         )

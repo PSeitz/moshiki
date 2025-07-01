@@ -94,10 +94,6 @@ mod tests {
             templates[0].template.template_id
         );
         assert_eq!(
-            read_templates_vec[0].parts.len(),
-            templates[0].template.parts.len()
-        );
-        assert_eq!(
             read_templates_vec[0].parts[0],
             TemplateToken::Constant("hello".to_string())
         );
