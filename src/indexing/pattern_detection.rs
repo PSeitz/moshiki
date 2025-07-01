@@ -1,4 +1,4 @@
-use fnv::FnvHashMap;
+use fxhash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::indexing::{
@@ -19,7 +19,10 @@ pub struct IndexingTemplate {
     pub parts: Vec<TemplateTokenWithMeta>,
 }
 
-pub fn pattern_scan(index: &PreliminaryIndex, old_to_new_id_map: &[u32]) -> Vec<TemplateAndDocs> {
+pub fn pattern_detection(
+    index: &PreliminaryIndex,
+    old_to_new_id_map: &[u32],
+) -> Vec<TemplateAndDocs> {
     let mut term_id_to_term_map: Vec<&[u8]> = vec![&[]; index.term_hash_map.len()];
     for (term_bytes, old_id) in index.term_hash_map.iter() {
         term_id_to_term_map[old_id as usize] = term_bytes;
@@ -89,7 +92,7 @@ fn print_stats_group(
     let num_docs = group.num_docs;
     println!("\n--- Stats for template {template_id_counter} with {num_docs} docs ---");
     for (col_idx, column_terms) in group.columns.iter().enumerate() {
-        let mut counts = FnvHashMap::default();
+        let mut counts = FxHashMap::default();
         for &term_id in column_terms {
             *counts.entry(term_id).or_insert(0) += 1;
         }

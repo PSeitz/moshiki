@@ -1,7 +1,7 @@
+use fxhash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::tokenizer::{Token, TokenType, Tokenizer};
-use fnv::FnvHashMap;
 use stacker::fastcmp::fast_short_slice_compare;
 
 use super::{fingerprint, termmap::IndexingTermmap};
@@ -64,7 +64,7 @@ pub struct IndexingTemplate {
 
 pub struct PreliminaryIndex {
     pub term_hash_map: IndexingTermmap,
-    pub preliminary_docs: FnvHashMap<u64, PrelimDocGroup>,
+    pub preliminary_docs: FxHashMap<u64, PrelimDocGroup>,
 }
 
 #[derive(Debug, Clone)]
@@ -256,7 +256,7 @@ impl From<(TokenType, u32)> for CompositeToken {
 
 pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryIndex {
     let mut term_hash_map = IndexingTermmap::default();
-    let mut preliminary_docs: FnvHashMap<u64, PrelimDocGroup> = FnvHashMap::default();
+    let mut preliminary_docs = FxHashMap::default();
 
     let mut tokens = Vec::new();
     for line in lines {

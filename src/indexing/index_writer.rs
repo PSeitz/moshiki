@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write, path::Path};
 
 use super::{
-    pattern_detection::pattern_scan, prelim::preliminary_index,
+    pattern_detection::pattern_detection, prelim::preliminary_index,
     write_dict::write_dictionary_and_generate_mapping,
 };
 use crate::templates::write_templates;
@@ -23,7 +23,7 @@ impl IndexWriter {
         )
         .unwrap();
 
-        let templates_and_docs = pattern_scan(&preliminary_index, &old_to_new_id_map);
+        let templates_and_docs = pattern_detection(&preliminary_index, &old_to_new_id_map);
         let templates_path = Path::new(&self.output_folder).join("templates.json");
         write_templates(&templates_and_docs, &templates_path).unwrap();
 
@@ -47,7 +47,7 @@ impl IndexWriter {
 #[cfg(test)]
 mod test {
     use crate::indexing::{
-        pattern_detection::pattern_scan, preliminary_index,
+        pattern_detection::pattern_detection, preliminary_index,
         write_dict::write_dictionary_and_generate_mapping,
     };
 
@@ -70,7 +70,7 @@ mod test {
         )
         .unwrap();
 
-        let templates_and_docs = pattern_scan(&preliminary_index, &old_to_new_id_map);
+        let templates_and_docs = pattern_detection(&preliminary_index, &old_to_new_id_map);
         assert!(
             !templates_and_docs.is_empty(),
             "Templates and docs should not be empty"
