@@ -1,7 +1,7 @@
 use fnv::FnvHashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::prelim_index::{PrelimDocGroup, PreliminaryIndex, TemplateToken, TemplateTokenWithMeta};
+use crate::indexing::{PrelimDocGroup, PreliminaryIndex, TemplateToken, TemplateTokenWithMeta};
 
 type TermIdMap<'a> = Vec<&'a [u8]>;
 

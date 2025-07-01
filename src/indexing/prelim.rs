@@ -1,12 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    fingerprint::fingerprint,
-    termmap::IndexingTermmap,
-    tokenizer::{Token, TokenType, Tokenizer},
-};
+use crate::tokenizer::{Token, TokenType, Tokenizer};
 use fnv::FnvHashMap;
 use stacker::fastcmp::fast_short_slice_compare;
+
+use super::{fingerprint, termmap::IndexingTermmap};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TemplateTokenWithMeta {

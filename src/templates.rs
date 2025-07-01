@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json;
 
-use crate::patterns::{Template, TemplateAndDocs};
+use crate::indexing::pattern_detection::{Template, TemplateAndDocs};
 
 pub fn write_templates(templates: &[TemplateAndDocs], path: &Path) -> io::Result<()> {
     let file = File::create(path)?;
@@ -22,8 +22,8 @@ pub fn read_templates(path: &Path) -> io::Result<Vec<Template>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::patterns::{Template, TemplateAndDocs};
-    use crate::prelim_index::{
+    use crate::indexing::pattern_detection::{Template, TemplateAndDocs};
+    use crate::indexing::{
         CompositeToken, ConstTemplateToken, TemplateToken, TemplateTokenWithMeta,
     };
     use crate::tokenizer::TokenType;

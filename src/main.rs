@@ -2,7 +2,7 @@ use std::fs;
 use std::io::BufRead;
 use std::path::Path;
 
-use moshiki::index::IndexWriter;
+use moshiki::indexing::IndexWriter;
 
 fn main() {
     // First param is the NDJSON

@@ -5,10 +5,8 @@ use std::{
 };
 use tantivy_sstable::MonotonicU64SSTable;
 
-use crate::{
-    patterns::pattern_scan, prelim_index::preliminary_index, templates::write_templates,
-    termmap::IndexingTermmap,
-};
+use super::{pattern_detection::pattern_scan, prelim::preliminary_index, termmap::IndexingTermmap};
+use crate::templates::write_templates;
 
 pub struct IndexWriter {
     output_folder: String,
@@ -89,7 +87,7 @@ impl IndexWriter {
 
 #[cfg(test)]
 mod test {
-    use crate::{index::IndexWriter, patterns::pattern_scan, prelim_index::preliminary_index};
+    use crate::indexing::{pattern_detection::pattern_scan, preliminary_index, IndexWriter};
 
     #[test]
     fn test_mini_index() {

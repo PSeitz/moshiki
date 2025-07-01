@@ -1,4 +1,4 @@
-use crate::prelim_index::{CompositeToken, PrelimDocGroup};
+use crate::indexing::{CompositeToken, PrelimDocGroup};
 use fnv::FnvHashMap;
 
 pub fn remap_term_ids(
@@ -28,8 +28,7 @@ pub fn remap_term_ids_in_template(template: &mut [CompositeToken], old_to_new_id
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::index::IndexWriter;
-    use crate::prelim_index::preliminary_index;
+    use crate::indexing::{IndexWriter, preliminary_index};
     use tempfile::tempdir;
 
     #[test]

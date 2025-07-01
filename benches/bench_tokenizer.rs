@@ -1,5 +1,5 @@
 use binggan::{BenchRunner, INSTRUMENTED_SYSTEM, PeakMemAlloc, black_box, plugins::*};
-use moshiki::{prelim_index::preliminary_index, tokenizer::Tokenizer};
+use moshiki::{indexing::preliminary_index, tokenizer::Tokenizer};
 
 #[global_allocator]
 pub static GLOBAL: &PeakMemAlloc<std::alloc::System> = &INSTRUMENTED_SYSTEM;
