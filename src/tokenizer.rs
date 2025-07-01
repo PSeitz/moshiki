@@ -305,13 +305,13 @@ impl<'a> Iterator for Tokenizer<'a> {
     }
 }
 
-#[inline(always)]
+#[inline]
 fn word_len(bytes: &[u8]) -> usize {
     let mut i = 0;
     while i < bytes.len() {
         let b = bytes[i];
         // Fast-reject the common case first
-        if !b.is_ascii_uppercase() && !b.is_ascii_lowercase() && !b.is_ascii_digit() {
+        if !b.is_ascii_alphabetic() && !b.is_ascii_digit() {
             // Fall-back when we *might* have hit a delimiter
             if b.is_ascii_whitespace()
                 || (b.is_ascii_punctuation() && !matches!(b, b'.' | b'-' | b'_'))

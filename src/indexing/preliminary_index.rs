@@ -1,4 +1,4 @@
-use fxhash::FxHashMap;
+use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::tokenizer::{Token, TokenType, Tokenizer};
@@ -70,8 +70,6 @@ pub struct PreliminaryIndex {
 #[derive(Debug, Clone)]
 pub struct PrelimDocGroup {
     pub template: IndexingTemplate,
-    // TODO: No need for composite_tokens here, we know the type and can derive it from the
-    // template
     pub columns: Vec<Vec<u32>>,
     pub num_docs: usize,
 }
@@ -275,6 +273,69 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
         term_hash_map,
         preliminary_docs,
     }
+}
+
+#[derive(Clone)]
+pub enum SingleOrHashSet {
+    Single(Option<u32>),
+    HashSet(FxHashSet<u32>),
+}
+impl Default for SingleOrHashSet {
+    fn default() -> Self {
+        SingleOrHashSet::Single(None)
+    }
+}
+impl SingleOrHashSet {
+    fn insert(&mut self, template_id: u32) {
+        match self {
+            SingleOrHashSet::Single(opt) => {
+                if let Some(existing) = opt {
+                    if *existing != template_id {
+                        let mut set = FxHashSet::default();
+                        set.insert(*existing);
+                        set.insert(template_id);
+                        *self = SingleOrHashSet::HashSet(set);
+                    }
+                } else {
+                    *opt = Some(template_id);
+                }
+            }
+            SingleOrHashSet::HashSet(set) => {
+                set.insert(template_id);
+            }
+        }
+    }
+    pub fn copy_into_vec(&self, vec: &mut Vec<u32>) {
+        match self {
+            SingleOrHashSet::Single(opt) => {
+                if let Some(id) = opt {
+                    vec.push(*id);
+                }
+            }
+            SingleOrHashSet::HashSet(set) => {
+                vec.extend(set.iter().copied());
+            }
+        }
+    }
+}
+
+/// Scan the columns and store in which templates a term ID is used
+///
+/// We can use a vec for the term IDs, since they are guaranteed to be unique within a column.
+pub fn term_id_idx_to_template_ids(prelim_index: &PreliminaryIndex) -> Vec<SingleOrHashSet> {
+    let mut term_id_to_templates: Vec<SingleOrHashSet> =
+        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.len()];
+
+    // TODO: BUG template_id is not known here yet (correct now, but not in the future)
+    for (template_id, group) in prelim_index.preliminary_docs.values().enumerate() {
+        for column in &group.columns {
+            for term_id in column {
+                term_id_to_templates[*term_id as usize].insert(template_id as u32);
+            }
+        }
+    }
+
+    term_id_to_templates
 }
 
 //impl<'a> PrelimDoc<'a> {

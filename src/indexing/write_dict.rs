@@ -1,11 +1,12 @@
 use tantivy_sstable::{
-    MonotonicU64SSTable, SSTable,
     value::{ValueReader, ValueWriter},
+    SSTable,
 };
 
 pub fn write_dictionary_and_generate_mapping(
     output_folder: &str,
     term_hash_map: &IndexingTermmap,
+    term_id_to_template_id: Vec<SingleOrHashSet>,
 ) -> io::Result<Vec<u32>> {
     let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
     let max_old_id = term_hash_map.len() as u32;
@@ -19,23 +20,32 @@ pub fn write_dictionary_and_generate_mapping(
     let dictionary_path = Path::new(output_folder).join("dictionary.fst");
     let wtr = BufWriter::new(File::create(dictionary_path)?);
 
-    let mut builder = tantivy_sstable::Dictionary::<MonotonicU64SSTable>::builder(wtr).unwrap();
-
-    //let mut map_builder = MapBuilder::new(wtr).map_err(io::Error::other)?;
+    let mut builder = tantivy_sstable::Dictionary::<VecU32ValueSSTable>::builder(wtr).unwrap();
 
     // We may have duplicate terms, so we need to ensure that we assign the same new ID to the
     // same term and not insert it multiple times.
     let mut previous_term = None;
     let mut new_id = 0;
+
+    let mut template_ids = Vec::new();
     for (term_bytes, old_id) in sorted_terms.into_iter() {
+        // TODO: BUG, we didn't insert the template IDs of the duplicate terms
+        // We need to collect the template_ids and insert the last duplicate
         if previous_term == Some(term_bytes) {
             // If the term is the same as the previous one, use the same new ID
             old_to_new_id_map[old_id as usize] = new_id as u32;
             continue;
         }
+
+        template_ids.clear();
+        term_id_to_template_id[old_id as usize].copy_into_vec(&mut template_ids);
+        if template_ids.len() > 1 {
+            template_ids.sort_unstable();
+        }
+
         previous_term = Some(term_bytes);
         old_to_new_id_map[old_id as usize] = new_id as u32;
-        builder.insert(term_bytes, &(new_id as u64)).unwrap();
+        builder.insert(term_bytes, &(template_ids)).unwrap();
         new_id += 1;
     }
     builder.finish().map_err(io::Error::other)?;
@@ -56,7 +66,7 @@ use std::{
     path::Path,
 };
 
-use super::termmap::IndexingTermmap;
+use super::{termmap::IndexingTermmap, SingleOrHashSet};
 
 #[derive(Default)]
 pub struct VecU32ValueReader {

@@ -1,8 +1,8 @@
 use std::{fs::File, io::Write, path::Path};
 
 use super::{
-    pattern_detection::pattern_detection, prelim::preliminary_index,
-    write_dict::write_dictionary_and_generate_mapping,
+    pattern_detection::pattern_detection, preliminary_index::preliminary_index,
+    term_id_idx_to_template_ids, write_dict::write_dictionary_and_generate_mapping,
 };
 use crate::templates::write_templates;
 
@@ -17,9 +17,11 @@ impl IndexWriter {
 
     pub fn index(&self, lines: impl Iterator<Item = String>) {
         let preliminary_index = preliminary_index(lines);
+        let term_id_idx = term_id_idx_to_template_ids(&preliminary_index);
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
             &self.output_folder,
             &preliminary_index.term_hash_map,
+            term_id_idx,
         )
         .unwrap();
 
@@ -67,6 +69,7 @@ mod test {
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
             tempfolder.path().to_str().unwrap(),
             &preliminary_index.term_hash_map,
+            vec![Default::default(); preliminary_index.term_hash_map.len()],
         )
         .unwrap();
 
