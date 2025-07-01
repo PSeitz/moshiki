@@ -1,16 +1,17 @@
 use fnv::FnvHashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::prelim_index::{PrelimDocGroup, PreliminaryIndex, TemplateToken, TemplateTokenWithMeta};
 
 type TermIdMap<'a> = Vec<&'a [u8]>;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TemplateAndDocs {
     pub template: Template,
     pub docs_term_ids: Vec<u32>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Template {
     pub template_id: u32,
     pub parts: Vec<TemplateTokenWithMeta>,

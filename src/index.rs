@@ -5,7 +5,10 @@ use std::{
 };
 use tantivy_sstable::MonotonicU64SSTable;
 
-use crate::{patterns::pattern_scan, prelim_index::preliminary_index, termmap::IndexingTermmap};
+use crate::{
+    patterns::pattern_scan, prelim_index::preliminary_index, templates::write_templates,
+    termmap::IndexingTermmap,
+};
 
 pub struct IndexWriter {
     output_folder: String,
@@ -25,6 +28,8 @@ impl IndexWriter {
         .unwrap();
 
         let templates_and_docs = pattern_scan(&preliminary_index, &old_to_new_id_map);
+        let templates_path = Path::new(&self.output_folder).join("templates.json");
+        write_templates(&templates_and_docs, &templates_path).unwrap();
 
         for template_and_doc in templates_and_docs {
             let mut byte_buffer = Vec::new();

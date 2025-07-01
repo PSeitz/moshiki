@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
     fingerprint::fingerprint,
     termmap::IndexingTermmap,
@@ -6,14 +8,14 @@ use crate::{
 use fnv::FnvHashMap;
 use stacker::fastcmp::fast_short_slice_compare;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TemplateTokenWithMeta {
     pub token: TemplateToken,
     /// This is the index in the token sequence
     pub token_index: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TemplateToken {
     Constant(ConstTemplateToken),
     Variable {
@@ -23,7 +25,7 @@ pub enum TemplateToken {
     Whitespace(u32),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConstTemplateToken {
     pub composite_token: CompositeToken,
     pub text: String,
@@ -207,7 +209,7 @@ pub fn check_is_id_like(column: &[u32], num_docs: usize) -> bool {
     true // All IDs are unique
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompositeToken {
     token_type: TokenType,
     term_id: u32,

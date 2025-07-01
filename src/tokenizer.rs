@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 pub fn tokenize_into(input: &str, tokens: &mut Vec<Token>) {
@@ -25,7 +26,7 @@ pub fn reconstruct_from_tokens(input: &str, tokens: impl Iterator<Item = Token>)
 }
 
 /// Typed token kinds with zero allocations
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum Token {
     IPv4(Range<u32>),
     Number(Range<u32>),
@@ -35,7 +36,7 @@ pub enum Token {
     Whitespace(u32),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TokenType {
     Word = 1,
