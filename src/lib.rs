@@ -1,3 +1,4 @@
+pub mod dict;
 pub mod indexing;
 pub mod search;
 pub mod templates;
@@ -6,8 +7,6 @@ pub use tokenizer::Token;
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
-    use std::io::{BufRead, Write};
 
     use tempfile::TempDir;
 
@@ -24,7 +23,7 @@ mod tests {
 
         let lines = ["hello world", "hello there", "another line"];
         let lines = lines.iter().map(|line| line.to_string());
-        writer.index(lines);
+        writer.index(lines).unwrap();
 
         // Search the data
         let searcher = Searcher::new(output_folder).unwrap();

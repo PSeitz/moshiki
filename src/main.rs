@@ -35,7 +35,7 @@ fn main() {
         .map(|line| line.expect("Failed to read line"));
 
     let writer = IndexWriter::new(output_folder.to_string());
-    writer.index(lines);
+    writer.index(lines).unwrap();
 
     println!(
         "Throughput: {:.2} MB/s",

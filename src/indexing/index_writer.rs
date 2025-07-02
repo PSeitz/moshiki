@@ -65,7 +65,7 @@ mod test {
         assert_eq!(vals.columns[0].len(), 2, "Column should have two entries");
 
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
-            tempfolder.path().to_str().unwrap(),
+            tempfolder.path(),
             &preliminary_index.term_hash_map,
             vec![Default::default(); preliminary_index.term_hash_map.len()],
         )
