@@ -1,6 +1,69 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
+const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
+    let mut lookup = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        let b = i as u8;
+        if b.is_ascii_whitespace()
+            || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_')
+        {
+            lookup[i] = true;
+        }
+        i += 1;
+    }
+    lookup
+};
+
+const WHITESPACE_LOOKUP_TABLE: [bool; 256] = {
+    let mut lookup = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        if (i as u8).is_ascii_whitespace() {
+            lookup[i] = true;
+        }
+        i += 1;
+    }
+    lookup
+};
+
+const PUNCTUATION_LOOKUP_TABLE: [bool; 256] = {
+    let mut lookup = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        if (i as u8).is_ascii_punctuation() {
+            lookup[i] = true;
+        }
+        i += 1;
+    }
+    lookup
+};
+
+const DIGIT_LOOKUP_TABLE: [bool; 256] = {
+    let mut lookup = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        if (i as u8).is_ascii_digit() {
+            lookup[i] = true;
+        }
+        i += 1;
+    }
+    lookup
+};
+
+const HEX_DIGIT_LOOKUP_TABLE: [bool; 256] = {
+    let mut lookup = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        if (i as u8).is_ascii_hexdigit() {
+            lookup[i] = true;
+        }
+        i += 1;
+    }
+    lookup
+};
+
 pub fn tokenize_into(input: &str, tokens: &mut Vec<Token>) {
     let tokenizer = Tokenizer::new(input);
     for token in tokenizer {
@@ -146,14 +209,14 @@ fn is_ipv4(s: &str) -> Option<usize> {
         let start = i;
 
         // At least one digit must be present
-        if i >= bytes.len() || !bytes[i].is_ascii_digit() {
+        if i >= bytes.len() || !DIGIT_LOOKUP_TABLE[bytes[i] as usize] {
             return None;
         }
 
         let mut val: u16 = 0;
         let mut digit_cnt = 0;
 
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
+        while i < bytes.len() && DIGIT_LOOKUP_TABLE[bytes[i] as usize] {
             // Convert ASCII digit to numeric value
             val = val * 10 + (bytes[i] - b'0') as u16;
             digit_cnt += 1;
@@ -190,14 +253,14 @@ fn is_number(s: &str) -> Option<usize> {
     if s.is_empty() {
         return None;
     }
-    if !s.as_bytes()[0].is_ascii_digit() {
+    if !DIGIT_LOOKUP_TABLE[s.as_bytes()[0] as usize] {
         // Check if the first character is a digit
         return None;
     }
     Some(
         s.as_bytes()
             .iter()
-            .take_while(|&c| c.is_ascii_digit())
+            .take_while(|&&c| DIGIT_LOOKUP_TABLE[c as usize])
             .count(),
     )
 }
@@ -222,7 +285,7 @@ fn is_uuid(s: &str) -> Option<usize> {
                 }
             }
             _ => {
-                if !b.is_ascii_hexdigit() {
+                if !HEX_DIGIT_LOOKUP_TABLE[b as usize] {
                     return None; // non-hex digit
                 }
             }
@@ -263,10 +326,10 @@ impl<'a> Iterator for Tokenizer<'a> {
         let bytes = &self.input.as_bytes()[self.pos as usize..];
 
         // 1) Whitespace (contiguous)
-        if bytes[0].is_ascii_whitespace() {
+        if WHITESPACE_LOOKUP_TABLE[bytes[0] as usize] {
             let len = bytes
                 .iter()
-                .take_while(|&&b| b.is_ascii_whitespace())
+                .take_while(|&&b| WHITESPACE_LOOKUP_TABLE[b as usize])
                 .count();
             self.pos += len as u32;
             return Some(Token::Whitespace(len as u32));
@@ -275,10 +338,10 @@ impl<'a> Iterator for Tokenizer<'a> {
         let start = self.pos;
 
         // 2) Punctuation (contiguous)
-        if bytes[0].is_ascii_punctuation() {
+        if PUNCTUATION_LOOKUP_TABLE[bytes[0] as usize] {
             let len = bytes
                 .iter()
-                .take_while(|&&b| b.is_ascii_punctuation())
+                .take_while(|&&b| PUNCTUATION_LOOKUP_TABLE[b as usize])
                 .count();
             self.pos += len as u32;
             return Some(Token::Punctuation(start..self.pos));
@@ -304,21 +367,6 @@ impl<'a> Iterator for Tokenizer<'a> {
         Some(token)
     }
 }
-
-const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
-    let mut lookup = [false; 256];
-    let mut i = 0;
-    while i < 256 {
-        let b = i as u8;
-        if b.is_ascii_whitespace()
-            || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_')
-        {
-            lookup[i] = true;
-        }
-        i += 1;
-    }
-    lookup
-};
 
 #[inline]
 fn word_len(bytes: &[u8]) -> usize {
