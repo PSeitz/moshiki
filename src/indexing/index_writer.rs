@@ -1,21 +1,29 @@
-use std::{fs::File, io::Write, path::Path};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use super::{
-    pattern_detection::pattern_detection, preliminary_index::preliminary_index,
-    term_id_idx_to_template_ids, write_dict::write_dictionary_and_generate_mapping,
+    pattern_detection::pattern_detection,
+    preliminary_index::preliminary_index,
+    term_id_idx_to_template_ids,
+    write_columns::{self, write_column},
+    write_dict::{self, write_dictionary_and_generate_mapping},
 };
 use crate::templates::write_templates;
 
 pub struct IndexWriter {
-    output_folder: String,
+    output_folder: PathBuf,
 }
 
 impl IndexWriter {
     pub fn new(output_folder: String) -> Self {
-        IndexWriter { output_folder }
+        IndexWriter {
+            output_folder: output_folder.into(),
+        }
     }
 
-    pub fn index(&self, lines: impl Iterator<Item = String>) {
+    pub fn index(&self, lines: impl Iterator<Item = String>) -> io::Result<()> {
         let preliminary_index = preliminary_index(lines);
         let term_id_idx = term_id_idx_to_template_ids(&preliminary_index);
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
@@ -30,19 +38,9 @@ impl IndexWriter {
         write_templates(&templates_and_docs, &templates_path).unwrap();
 
         for template_and_doc in templates_and_docs {
-            let mut byte_buffer = Vec::new();
-            for term_id in &template_and_doc.docs_term_ids {
-                byte_buffer.extend_from_slice(&term_id.to_le_bytes());
-            }
-
-            let compressed_data = zstd::stream::encode_all(&*byte_buffer, 6).unwrap();
-            let file_path = Path::new(&self.output_folder).join(format!(
-                "template_{}.zst",
-                template_and_doc.template.template_id
-            ));
-            let mut file = File::create(file_path).unwrap();
-            file.write_all(&compressed_data).unwrap();
+            write_column(&self.output_folder, &template_and_doc)?;
         }
+        Ok(())
     }
 }
 

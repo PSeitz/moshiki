@@ -49,14 +49,14 @@ impl Searcher {
         Ok(None)
     }
 
-    pub fn search_in_zstd_column(&self, term_id: u64, zstd_column_path: &Path) -> io::Result<bool> {
+    pub fn search_in_zstd_column(&self, term_id: u32, zstd_column_path: &Path) -> io::Result<bool> {
         let file = std::fs::File::open(zstd_column_path)?;
         let mut decoder = zstd::Decoder::new(file)?;
         let mut buffer = Vec::new();
         io::Read::read_to_end(&mut decoder, &mut buffer)?;
         Ok(buffer
-            .chunks_exact(8)
-            .any(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()) == term_id))
+            .chunks_exact(4)
+            .any(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()) == term_id))
     }
 }
 
