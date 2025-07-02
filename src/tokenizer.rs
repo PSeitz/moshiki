@@ -200,8 +200,10 @@ impl Token {
 /// Quick IPv4 check: four octets 0–255
 /// Returns the number of bytes consumed.
 #[inline]
-fn is_ipv4(s: &str) -> Option<usize> {
-    let bytes = s.as_bytes();
+fn is_ipv4(bytes: &[u8]) -> Option<usize> {
+    if !DIGIT_LOOKUP_TABLE[bytes[0] as usize] {
+        return None;
+    }
     let mut i = 0; // current index in `bytes`
 
     for octet_idx in 0..4 {
@@ -249,16 +251,13 @@ fn is_ipv4(s: &str) -> Option<usize> {
 /// Returns `Some(u32)` if the string is a valid number
 /// The parameter is the number of bytes in the token
 #[inline]
-fn is_number(s: &str) -> Option<usize> {
-    if s.is_empty() {
-        return None;
-    }
-    if !DIGIT_LOOKUP_TABLE[s.as_bytes()[0] as usize] {
+fn is_number(bytes: &[u8]) -> Option<usize> {
+    if !DIGIT_LOOKUP_TABLE[bytes[0] as usize] {
         // Check if the first character is a digit
         return None;
     }
     Some(
-        s.as_bytes()
+        bytes
             .iter()
             .take_while(|&&c| DIGIT_LOOKUP_TABLE[c as usize])
             .count(),
@@ -268,21 +267,21 @@ fn is_number(s: &str) -> Option<usize> {
 /// Simple UUID v4-ish check (8-4-4-4-12 pattern, 36 bytes total)
 /// Returns the number of bytes consumed (36) on success.
 #[inline]
-fn is_uuid(s: &str) -> Option<usize> {
-    let bytes = s.as_bytes();
-
-    // Need at least 36 bytes available
-    if bytes.len() < 36 {
-        return None;
+fn is_uuid(bytes: &[u8]) -> Option<usize> {
+    // Quickcheck first character
+    if bytes.len() < 36 || !HEX_DIGIT_LOOKUP_TABLE[bytes[0] as usize] {
+        return None; // too short or first char is not a hex digit
+    }
+    // Quickcheck the - separators
+    if bytes[8] != b'-' || bytes[13] != b'-' || bytes[18] != b'-' || bytes[23] != b'-' {
+        return None; // wrong separator positions
     }
 
     for i in 0..36 {
         let b = bytes[i];
         match i {
             8 | 13 | 18 | 23 => {
-                if b != b'-' {
-                    return None; // wrong separator
-                }
+                continue; // already checked
             }
             _ => {
                 if !HEX_DIGIT_LOOKUP_TABLE[b as usize] {
@@ -348,14 +347,13 @@ impl<'a> Iterator for Tokenizer<'a> {
         }
 
         // 4) Classify
-        let tok_str = self.get_text();
-        let token = if let Some(num_bytes) = is_ipv4(tok_str) {
+        let token = if let Some(num_bytes) = is_ipv4(bytes) {
             self.pos += num_bytes as u32;
             Token::IPv4(start..self.pos)
-        } else if let Some(num_bytes) = is_number(tok_str) {
+        } else if let Some(num_bytes) = is_number(bytes) {
             self.pos += num_bytes as u32;
             Token::Number(start..self.pos)
-        } else if let Some(num_bytes) = is_uuid(tok_str) {
+        } else if let Some(num_bytes) = is_uuid(bytes) {
             self.pos += num_bytes as u32;
             Token::Uuid(start..self.pos)
         } else {
