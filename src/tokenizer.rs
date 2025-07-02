@@ -305,23 +305,27 @@ impl<'a> Iterator for Tokenizer<'a> {
     }
 }
 
-#[inline]
-fn word_len(bytes: &[u8]) -> usize {
+const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
+    let mut lookup = [false; 256];
     let mut i = 0;
-    while i < bytes.len() {
-        let b = bytes[i];
-        // Fast-reject the common case first
-        if !b.is_ascii_alphabetic() && !b.is_ascii_digit() {
-            // Fall-back when we *might* have hit a delimiter
-            if b.is_ascii_whitespace()
-                || (b.is_ascii_punctuation() && !matches!(b, b'.' | b'-' | b'_'))
-            {
-                break;
-            }
+    while i < 256 {
+        let b = i as u8;
+        if b.is_ascii_whitespace()
+            || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_')
+        {
+            lookup[i] = true;
         }
         i += 1;
     }
-    i
+    lookup
+};
+
+#[inline]
+fn word_len(bytes: &[u8]) -> usize {
+    bytes
+        .iter()
+        .take_while(|&&b| !WORD_DELIMITER_LOOKUP_TABLE[b as usize])
+        .count()
 }
 
 #[cfg(test)]

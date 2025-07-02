@@ -1,6 +1,6 @@
 use tantivy_sstable::{
-    value::{ValueReader, ValueWriter},
     SSTable,
+    value::{ValueReader, ValueWriter},
 };
 
 pub fn write_dictionary_and_generate_mapping(
@@ -66,7 +66,7 @@ use std::{
     path::Path,
 };
 
-use super::{termmap::IndexingTermmap, SingleOrHashSet};
+use super::{SingleOrHashSet, termmap::IndexingTermmap};
 
 #[derive(Default)]
 pub struct VecU32ValueReader {
