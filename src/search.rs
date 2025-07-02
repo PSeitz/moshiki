@@ -1,33 +1,52 @@
 use std::io;
 use std::path::Path;
 
+use fxhash::FxHashMap;
 use tantivy_common::file_slice::FileSlice;
-use tantivy_sstable::MonotonicU64SSTable;
 
+use crate::indexing::write_dict::VecU32ValueSSTable;
 use crate::tokenizer::tokenize;
 
 pub struct Searcher {
-    dictionary: tantivy_sstable::Dictionary<MonotonicU64SSTable>,
+    dictionary: tantivy_sstable::Dictionary<VecU32ValueSSTable>,
 }
 
 impl Searcher {
     pub fn new(output_folder: &str) -> io::Result<Self> {
         let dictionary_path = Path::new(output_folder).join("dictionary.fst");
         let file = FileSlice::open(&dictionary_path)?;
-        let dictionary = tantivy_sstable::Dictionary::<MonotonicU64SSTable>::open(file).unwrap();
+        let dictionary = tantivy_sstable::Dictionary::<VecU32ValueSSTable>::open(file).unwrap();
         Ok(Searcher { dictionary })
     }
 
-    pub fn search(&self, query: &str) -> Vec<u64> {
-        let mut term_ids = Vec::new();
+    /// Search for terms in the dictionary and return a mapping of term IDs to template IDs.
+    /// The query is tokenized, and each token is looked up in the dictionary.
+    pub fn search(&self, query: &str) -> io::Result<FxHashMap<u32, Vec<u32>>> {
+        let mut term_ids_to_template_ids: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
         for token in tokenize(query) {
             if let Some(term) = token.as_str(query) {
-                if let Ok(Some(term_id)) = self.dictionary.get(term) {
-                    term_ids.push(term_id);
+                if let Ok(Some(term_ord)) = self.dictionary.term_ord(term) {
+                    let template_ids = self.dictionary.term_info_from_ord(term_ord)?.unwrap();
+                    term_ids_to_template_ids
+                        .entry(term_ord as u32)
+                        .or_default()
+                        .extend(template_ids);
                 }
             }
         }
-        term_ids
+        Ok(term_ids_to_template_ids)
+    }
+    /// Search for a singe term in the dictionary and return its term ID and associated template
+    /// IDs.
+    pub fn search_single_term(&self, term: &str) -> io::Result<Option<(u32, Vec<u32>)>> {
+        if let Ok(Some(term_ord)) = self.dictionary.term_ord(term) {
+            return Ok(self
+                .dictionary
+                .term_info_from_ord(term_ord)?
+                .map(|template_ids| Some((term_ord as u32, template_ids)))
+                .unwrap());
+        }
+        Ok(None)
     }
 
     pub fn search_in_zstd_column(&self, term_id: u64, zstd_column_path: &Path) -> io::Result<bool> {
@@ -56,11 +75,11 @@ mod tests {
 
         // Create a dummy dictionary
         let dictionary_path = temp_dir.path().join("dictionary.fst");
-        let mut dictionary_builder = tantivy_sstable::Dictionary::<MonotonicU64SSTable>::builder(
+        let mut dictionary_builder = tantivy_sstable::Dictionary::<VecU32ValueSSTable>::builder(
             std::fs::File::create(&dictionary_path).unwrap(),
         )
         .unwrap();
-        dictionary_builder.insert("a", &12).unwrap();
+        dictionary_builder.insert("a", &vec![12]).unwrap();
         dictionary_builder.finish().unwrap();
 
         // Create a dummy compressed file
@@ -78,8 +97,8 @@ mod tests {
         encoder.finish().unwrap();
 
         let searcher = Searcher::new(output_folder).unwrap();
-        let term_ids = searcher.search("a");
-        assert_eq!(term_ids, vec![12]);
+        let term_ids = searcher.search_single_term("a").unwrap().unwrap();
+        assert_eq!(term_ids, (0, vec![12]));
         assert!(
             searcher
                 .search_in_zstd_column(12, &compressed_path)
