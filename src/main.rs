@@ -24,11 +24,11 @@ fn main() {
     }
 
     println!("Reading NDJSON file: {ndjson_file}");
-    let file_size = std::fs::metadata(ndjson_file)
+    let file_size = fs::metadata(ndjson_file)
         .expect("Failed to get file metadata")
         .len();
     let start_time = std::time::Instant::now();
-    let file = std::fs::File::open(ndjson_file).expect("Failed to open NDJSON file");
+    let file = fs::File::open(ndjson_file).expect("Failed to open NDJSON file");
     let reader = std::io::BufReader::new(file);
     let lines = reader
         .lines()

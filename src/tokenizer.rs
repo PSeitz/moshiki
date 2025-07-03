@@ -88,6 +88,19 @@ pub fn reconstruct_from_tokens(input: &str, tokens: impl Iterator<Item = Token>)
         .collect()
 }
 
+pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec<String> {
+    tokens
+        .map(|t| match t {
+            Token::IPv4(r)
+            | Token::Number(r)
+            | Token::Uuid(r)
+            | Token::Word(r)
+            | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
+            Token::Whitespace(s) => " ".repeat(s as usize),
+        })
+        .collect()
+}
+
 /// Typed token kinds with zero allocations
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum Token {

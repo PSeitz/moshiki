@@ -1,7 +1,7 @@
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
-use crate::tokenizer::{Token, TokenType, Tokenizer};
+use crate::tokenizer::{tokens_as_string, Token, TokenType, Tokenizer};
 use stacker::fastcmp::fast_short_slice_compare;
 
 use super::{fingerprint, termmap::IndexingTermmap};
@@ -66,6 +66,28 @@ pub struct PreliminaryIndex {
     pub term_hash_map: IndexingTermmap,
     pub preliminary_docs: FxHashMap<u64, PrelimDocGroup>,
 }
+impl PreliminaryIndex {
+    /// Print stats about the number of tokens
+    pub fn print_stats(&self) {
+        // group by token length
+
+        let mut token_length_map: FxHashMap<usize, usize> = FxHashMap::default();
+
+        for group in self.preliminary_docs.values() {
+            token_length_map
+                .entry(group.template.tokens.len())
+                .and_modify(|e| *e += 1)
+                .or_insert(1);
+        }
+        println!("Token Length Stats:");
+        // sort by key
+        let mut sorted_lengths: Vec<_> = token_length_map.iter().collect();
+        sorted_lengths.sort_by_key(|&(k, _)| k);
+        for (length, count) in sorted_lengths {
+            println!("Length: {}, Count: {}", length, count);
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PrelimDocGroup {
@@ -94,6 +116,7 @@ fn create_composite_token(
     }
 }
 
+#[inline]
 fn get_term_id(
     token: &Token,
     line: &str,
@@ -260,6 +283,10 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
     for line in lines {
         let tokenizer = Tokenizer::new(&line);
         tokens.extend(tokenizer);
+        //if tokens.len() == 2319 {
+        //println!("Line: {}", line);
+        //println!("{:?}", tokens_as_string(&line, tokens.iter().cloned()));
+        //}
         let fingerprint = fingerprint(&tokens);
 
         let group = preliminary_docs

@@ -25,6 +25,7 @@ impl IndexWriter {
 
     pub fn index(&self, lines: impl Iterator<Item = String>) -> io::Result<()> {
         let preliminary_index = preliminary_index(lines);
+        preliminary_index.print_stats();
         let term_id_idx = term_id_idx_to_template_ids(&preliminary_index);
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
             &self.output_folder,
