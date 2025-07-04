@@ -90,9 +90,7 @@ impl PreliminaryIndex {
         let mut sorted_lengths: Vec<_> = token_length_map.iter().collect();
         sorted_lengths.sort_by_key(|&(k, _)| k);
         for (length, (count, num_docs)) in sorted_lengths {
-            println!(
-                "Length: {length}, Count: {count} Num Docs: {num_docs}"
-            );
+            println!("Length: {length}, Count: {count} Num Docs: {num_docs}");
         }
 
         println!("Total Number of Groups: {}", self.doc_groups.len());
