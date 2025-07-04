@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub fn get_template_path(folder: &Path, template_id: u32) -> PathBuf {
-    folder.join(format!("template_{}.zst", template_id))
+    folder.join(format!("template_{template_id}.zst",))
 }
 
 pub fn write_column(

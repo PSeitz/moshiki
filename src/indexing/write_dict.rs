@@ -1,6 +1,6 @@
 use tantivy_sstable::{
-    SSTable,
     value::{ValueReader, ValueWriter},
+    SSTable,
 };
 
 pub fn write_dictionary_and_generate_mapping(
@@ -14,7 +14,7 @@ pub fn write_dictionary_and_generate_mapping(
         sorted_terms.push((term_bytes, old_id));
     }
 
-    sorted_terms.sort_by(|(term_a, _), (term_b, _)| term_a.cmp(term_b));
+    sorted_terms.sort_unstable();
 
     let mut old_to_new_id_map: Vec<u32> = vec![0; (max_old_id + 1) as usize];
     let dictionary_path = output_folder.join("dictionary.fst");
@@ -24,28 +24,30 @@ pub fn write_dictionary_and_generate_mapping(
 
     // We may have duplicate terms, so we need to ensure that we assign the same new ID to the
     // same term and not insert it multiple times.
-    let mut previous_term = None;
-    let mut new_id = 0;
-
+    let mut new_id: u32 = 0;
     let mut template_ids = Vec::new();
-    for (term_bytes, old_id) in sorted_terms.into_iter() {
-        // TODO: BUG, we didn't insert the template IDs of the duplicate terms
-        // We need to collect the template_ids and insert the last duplicate
-        if previous_term == Some(term_bytes) {
-            // If the term is the same as the previous one, use the same new ID
-            old_to_new_id_map[old_id as usize] = new_id as u32;
-            continue;
-        }
 
-        template_ids.clear();
+    let mut iter = sorted_terms.into_iter().peekable();
+    while let Some((term_bytes, old_id)) = iter.next() {
+        old_to_new_id_map[old_id as usize] = new_id;
         term_id_to_template_id[old_id as usize].copy_into_vec(&mut template_ids);
+        while let Some((next_term_bytes, _)) = iter.peek()
+            && *next_term_bytes == term_bytes
+        {
+            let (_, old_id) = iter.next().unwrap();
+            old_to_new_id_map[old_id as usize] = new_id;
+            term_id_to_template_id[old_id as usize].copy_into_vec(&mut template_ids);
+            if template_ids.len() > 1 {
+                template_ids.sort_unstable();
+                template_ids.dedup();
+            }
+        }
         if template_ids.len() > 1 {
             template_ids.sort_unstable();
         }
 
-        previous_term = Some(term_bytes);
-        old_to_new_id_map[old_id as usize] = new_id as u32;
-        builder.insert(term_bytes, &(template_ids)).unwrap();
+        builder.insert(term_bytes, &template_ids).unwrap();
+        template_ids.clear();
         new_id += 1;
     }
     builder.finish().map_err(io::Error::other)?;
@@ -66,7 +68,7 @@ use std::{
     path::Path,
 };
 
-use super::{SingleOrHashSet, termmap::IndexingTermmap};
+use super::{termmap::IndexingTermmap, SingleOrHashSet};
 
 #[derive(Default)]
 pub struct VecU32ValueReader {
