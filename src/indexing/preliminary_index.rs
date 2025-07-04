@@ -91,8 +91,7 @@ impl PreliminaryIndex {
         sorted_lengths.sort_by_key(|&(k, _)| k);
         for (length, (count, num_docs)) in sorted_lengths {
             println!(
-                "Length: {}, Count: {} Num Docs: {}",
-                length, count, num_docs
+                "Length: {length}, Count: {count} Num Docs: {num_docs}"
             );
         }
 

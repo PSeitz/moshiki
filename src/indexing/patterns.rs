@@ -125,7 +125,7 @@ pub fn print_stats_group(
                 percentages
                     .iter()
                     .take(5)
-                    .map(|p| format!("{:.2}%", p))
+                    .map(|p| format!("{p:.2}%"))
                     .collect::<Vec<_>>()
                     .join(", "),
                 sorted_counts[0].1

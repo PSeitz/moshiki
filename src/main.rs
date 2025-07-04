@@ -70,7 +70,7 @@ fn generate_report(ndjson_files: &[String], output_folder: &str) -> io::Result<(
     let mut reports = Vec::new();
 
     for ndjson_file in ndjson_files {
-        println!("Indexing file: {}", ndjson_file);
+        println!("Indexing file: {ndjson_file}");
         let start_time = std::time::Instant::now();
         index_file(ndjson_file, output_folder, false)?;
 
