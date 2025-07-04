@@ -1,6 +1,6 @@
 pub mod fingerprint;
 pub mod index_writer;
-pub mod pattern_detection;
+pub mod patterns;
 pub mod preliminary_index;
 pub mod termmap;
 pub mod write_columns;

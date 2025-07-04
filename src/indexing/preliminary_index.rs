@@ -6,6 +6,12 @@ use stacker::fastcmp::fast_short_slice_compare;
 
 use super::{fingerprint, termmap::IndexingTermmap};
 
+#[derive(Debug, Clone, Default)]
+pub struct IndexingTemplate {
+    pub template_id: u32,
+    pub tokens: Vec<TemplateTokenWithMeta>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TemplateTokenWithMeta {
     pub token: IndexingTemplateToken,
@@ -57,16 +63,14 @@ impl IndexingTemplateToken {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct IndexingTemplate {
-    pub tokens: Vec<TemplateTokenWithMeta>,
-}
-
 pub struct PreliminaryIndex {
     pub term_hash_map: IndexingTermmap,
     pub doc_groups: FxHashMap<u64, PrelimDocGroup>,
 }
 impl PreliminaryIndex {
+    pub fn iter_templates(&self) -> impl Iterator<Item = &IndexingTemplate> {
+        self.doc_groups.values().map(|group| &group.template)
+    }
     /// Print stats about the number of tokens
     pub fn print_stats(&self) {
         // group by token length
@@ -144,6 +148,18 @@ pub struct PrelimDocGroup {
 }
 
 impl PrelimDocGroup {
+    pub fn iter_columns(&self) -> impl Iterator<Item = &[u32]> {
+        self.template.tokens.iter().flat_map(|template_token| {
+            // Iterate in the right order
+            match template_token.token {
+                IndexingTemplateToken::Variable { column_index, .. } => {
+                    Some(self.columns[column_index].as_slice())
+                }
+                _ => None,
+            }
+        })
+    }
+
     pub fn append(&mut self, other: &PrelimDocGroup) {
         self.num_docs += other.num_docs;
         // Merge only variable columns
@@ -222,6 +238,7 @@ impl PrelimDocGroup {
 
         Self {
             template: IndexingTemplate {
+                template_id: 0, // This will be set later
                 tokens: template_tokens,
             },
             columns: Vec::new(),
@@ -257,7 +274,7 @@ impl PrelimDocGroup {
                     let term_id = get_term_id(token, line, term_hash_map, *is_id_like);
                     self.columns[*column_index].push(term_id);
                     if self.num_docs == 1000 {
-                        *is_id_like = check_is_id_like(&self.columns[*column_index], self.num_docs);
+                        *is_id_like = check_is_id_like(&self.columns[*column_index]);
                     }
                 }
                 IndexingTemplateToken::Whitespace(_) => {
@@ -271,10 +288,7 @@ impl PrelimDocGroup {
 
 #[cold]
 /// TODO: The check could be done on a bitvec, since we probably have very few term IDs
-pub fn check_is_id_like(column: &[u32], num_docs: usize) -> bool {
-    if column.len() != num_docs {
-        return false; // Column length mismatch
-    }
+pub fn check_is_id_like(column: &[u32]) -> bool {
     let mut seen_ids = std::collections::HashSet::new();
     for term_id in column {
         if !seen_ids.insert(term_id) {

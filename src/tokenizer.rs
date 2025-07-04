@@ -308,8 +308,8 @@ fn is_uuid(bytes: &[u8]) -> Option<usize> {
 }
 
 /// scheme://something   → until first whitespace
+#[allow(dead_code)]
 fn is_url_chunk(bytes: &[u8]) -> Option<usize> {
-    // cheap check for “://”
     for i in 0..bytes.len().saturating_sub(2) {
         if bytes[i] == b':' && bytes[i + 1] == b'/' && bytes[i + 2] == b'/' {
             // found, now scan to whitespace
@@ -388,9 +388,9 @@ impl<'a> Iterator for Tokenizer<'a> {
         } else if let Some(num_bytes) = is_uuid(bytes) {
             self.pos += num_bytes as u32;
             Token::Uuid(start..self.pos)
-        } else if let Some(n) = is_url_chunk(bytes) {
-            self.pos += n as u32;
-            Token::Word(start..self.pos)
+        //} else if let Some(n) = is_url_chunk(bytes) {
+        //self.pos += n as u32;
+        //Token::Word(start..self.pos)
         } else {
             let len = word_len(bytes);
 
