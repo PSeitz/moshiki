@@ -48,7 +48,7 @@ fn bench_mini_index() {
         group.set_input_size(input_size);
         group.register_with_input("mini index", data, move |data| {
             let mini_index = black_box(preliminary_index(data.lines().map(|s| s.to_string())));
-            mini_index.preliminary_docs.len() as u64
+            mini_index.doc_groups.len() as u64
         });
         group.run();
     }

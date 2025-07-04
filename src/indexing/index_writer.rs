@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::{
-    pattern_detection::pattern_detection,
+    pattern_detection::{merge_templates, pattern_detection},
     preliminary_index::preliminary_index,
     term_id_idx_to_template_ids,
     write_columns::{self, write_column},
@@ -24,7 +24,8 @@ impl IndexWriter {
     }
 
     pub fn index(&self, lines: impl Iterator<Item = String>) -> io::Result<()> {
-        let preliminary_index = preliminary_index(lines);
+        let mut preliminary_index = preliminary_index(lines);
+        merge_templates(&mut preliminary_index);
         preliminary_index.print_stats();
         let term_id_idx = term_id_idx_to_template_ids(&preliminary_index);
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
@@ -60,7 +61,7 @@ mod test {
         let preliminary_index = preliminary_index(lines.into_iter());
 
         // Check that our docs are in the preliminary index
-        let vals = preliminary_index.preliminary_docs.values().next().unwrap();
+        let vals = preliminary_index.doc_groups.values().next().unwrap();
         assert_eq!(vals.columns.len(), 1, "Should have one column");
         assert_eq!(vals.num_docs, 2, "Should have two documents");
         assert_eq!(vals.columns[0].len(), 2, "Column should have two entries");

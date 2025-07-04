@@ -4,3 +4,4 @@ hdfs-logs-multitenants.json
 output
 
 *.txt
+*.txt.zst

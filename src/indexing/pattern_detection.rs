@@ -19,6 +19,77 @@ pub struct IndexingTemplate {
     pub parts: Vec<TemplateTokenWithMeta>,
 }
 
+pub fn merge_templates(index: &mut PreliminaryIndex) {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    enum MergeableTokenGroup {
+        Constant(String),
+        Variable,
+        Whitespace(u32),
+    }
+
+    let mut token_group_to_fingerprints: FxHashMap<Vec<MergeableTokenGroup>, Vec<u64>> =
+        FxHashMap::default();
+    for (pos, group) in &index.doc_groups {
+        let mergeable_token_types: Vec<MergeableTokenGroup> = group
+            .template
+            .tokens
+            .iter()
+            .map(|token| match &token.token {
+                IndexingTemplateToken::Constant(constant_token) => {
+                    // Wo only consider merging them if we don't have many docs
+                    if group.num_docs < 1000 {
+                        MergeableTokenGroup::Variable
+                    } else {
+                        MergeableTokenGroup::Constant(constant_token.text.to_string())
+                    }
+                }
+                IndexingTemplateToken::Variable { .. } => {
+                    // Variable tokens are always mergeable
+                    MergeableTokenGroup::Variable
+                }
+                IndexingTemplateToken::Whitespace(num) => {
+                    if group.num_docs < 100 {
+                        MergeableTokenGroup::Variable
+                    } else {
+                        MergeableTokenGroup::Whitespace(*num)
+                    }
+                }
+            })
+            .collect();
+        token_group_to_fingerprints
+            .entry(mergeable_token_types)
+            .and_modify(|e| e.push(*pos))
+            .or_insert(vec![*pos]);
+    }
+
+    // For each group, we will group them by their token types
+    for (token_group, fingerprints) in token_group_to_fingerprints {
+        if fingerprints.len() < 2 {
+            continue; // No need to merge if there's only one group
+        }
+        // At first convert const tokens to variable ones
+        for (token_idx, token_group_type) in token_group.iter().enumerate() {
+            if let MergeableTokenGroup::Variable = token_group_type {
+                // Iterate over the indices and convert the constant tokens to variable tokens
+                for &idx in &fingerprints {
+                    let group = &mut index.doc_groups.get_mut(&idx).unwrap();
+                    // Convert the constant token at the current index to a variable token
+                    group.convert_to_variable(token_idx, &mut index.term_hash_map);
+                }
+            }
+        }
+
+        // append all to the first group,
+        let mut first_group = index.doc_groups.remove(&fingerprints[0]).unwrap();
+        for &idx in &fingerprints[1..] {
+            first_group.append(index.doc_groups.get(&idx).unwrap());
+            index.doc_groups.remove(&idx);
+        }
+        // Insert the merged group back into the index
+        index.doc_groups.insert(fingerprints[0], first_group);
+    }
+}
+
 pub fn pattern_detection(
     index: &PreliminaryIndex,
     old_to_new_id_map: &[u32],
@@ -31,7 +102,7 @@ pub fn pattern_detection(
     let mut template_and_docs = Vec::new();
     let mut template_id_counter = 0;
 
-    for group in index.preliminary_docs.values() {
+    for group in index.doc_groups.values() {
         let num_docs = group.num_docs;
         if num_docs > 2_000_000 {
             print_stats_group(group, template_id_counter, &term_id_to_term_map);

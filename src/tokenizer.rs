@@ -307,6 +307,25 @@ fn is_uuid(bytes: &[u8]) -> Option<usize> {
     Some(36)
 }
 
+/// scheme://something   → until first whitespace
+fn is_url_chunk(bytes: &[u8]) -> Option<usize> {
+    // cheap check for “://”
+    for i in 0..bytes.len().saturating_sub(2) {
+        if bytes[i] == b':' && bytes[i + 1] == b'/' && bytes[i + 2] == b'/' {
+            // found, now scan to whitespace
+            let len = bytes
+                .iter()
+                .take_while(|&&b| !WHITESPACE_LOOKUP_TABLE[b as usize])
+                .count();
+            return Some(len);
+        }
+        if bytes[i].is_ascii_whitespace() {
+            break;
+        } // bail early
+    }
+    None
+}
+
 /// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
 /// (excluding '.', '-', and '_' so tokens like IPs, hyphenated IDs, and snake_case stay intact)
 pub struct Tokenizer<'a> {
@@ -369,6 +388,9 @@ impl<'a> Iterator for Tokenizer<'a> {
         } else if let Some(num_bytes) = is_uuid(bytes) {
             self.pos += num_bytes as u32;
             Token::Uuid(start..self.pos)
+        } else if let Some(n) = is_url_chunk(bytes) {
+            self.pos += n as u32;
+            Token::Word(start..self.pos)
         } else {
             let len = word_len(bytes);
 

@@ -1,7 +1,7 @@
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
-use crate::tokenizer::{tokens_as_string, Token, TokenType, Tokenizer};
+use crate::tokenizer::{Token, TokenType, Tokenizer};
 use stacker::fastcmp::fast_short_slice_compare;
 
 use super::{fingerprint, termmap::IndexingTermmap};
@@ -64,36 +64,36 @@ pub struct IndexingTemplate {
 
 pub struct PreliminaryIndex {
     pub term_hash_map: IndexingTermmap,
-    pub preliminary_docs: FxHashMap<u64, PrelimDocGroup>,
+    pub doc_groups: FxHashMap<u64, PrelimDocGroup>,
 }
 impl PreliminaryIndex {
     /// Print stats about the number of tokens
     pub fn print_stats(&self) {
         // group by token length
+        let mut token_length_map: FxHashMap<usize, (usize, usize)> = FxHashMap::default();
 
-        let mut token_length_map: FxHashMap<usize, usize> = FxHashMap::default();
-
-        for group in self.preliminary_docs.values() {
+        for group in self.doc_groups.values() {
             token_length_map
                 .entry(group.template.tokens.len())
-                .and_modify(|e| *e += 1)
-                .or_insert(1);
+                .and_modify(|e| {
+                    e.0 += 1; // Increment count of this length
+                    e.1 += group.num_docs; // Add number of documents
+                })
+                .or_insert((1, group.num_docs));
         }
         println!("Token Length Stats:");
         // sort by key
         let mut sorted_lengths: Vec<_> = token_length_map.iter().collect();
         sorted_lengths.sort_by_key(|&(k, _)| k);
-        for (length, count) in sorted_lengths {
-            println!("Length: {}, Count: {}", length, count);
+        for (length, (count, num_docs)) in sorted_lengths {
+            println!(
+                "Length: {}, Count: {} Num Docs: {}",
+                length, count, num_docs
+            );
         }
-    }
-}
 
-#[derive(Debug, Clone)]
-pub struct PrelimDocGroup {
-    pub template: IndexingTemplate,
-    pub columns: Vec<Vec<u32>>,
-    pub num_docs: usize,
+        println!("Total Number of Groups: {}", self.doc_groups.len());
+    }
 }
 
 fn create_composite_token(
@@ -136,7 +136,63 @@ fn get_term_id(
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PrelimDocGroup {
+    pub template: IndexingTemplate,
+    pub columns: Vec<Vec<u32>>,
+    pub num_docs: usize,
+}
+
 impl PrelimDocGroup {
+    pub fn append(&mut self, other: &PrelimDocGroup) {
+        self.num_docs += other.num_docs;
+        // Merge only variable columns
+        for (target_token, source_token) in self
+            .template
+            .tokens
+            .iter()
+            .zip(other.template.tokens.iter())
+        {
+            if let (
+                IndexingTemplateToken::Variable {
+                    column_index: target_index,
+                    ..
+                },
+                IndexingTemplateToken::Variable {
+                    column_index: source_index,
+                    ..
+                },
+            ) = (&target_token.token, &source_token.token)
+            {
+                // Append the source column to the target column
+                self.columns[*target_index].extend_from_slice(&other.columns[*source_index]);
+            }
+        }
+    }
+    pub fn convert_to_variable(&mut self, token_idx: usize, term_hash_map: &mut IndexingTermmap) {
+        // Convert the token at token_idx to a variable
+        let template_token = &mut self.template.tokens[token_idx];
+        match &mut template_token.token {
+            IndexingTemplateToken::Constant(existing_ct) => {
+                // This position is now variable
+                let column_index = self.columns.len();
+                let new_column = vec![existing_ct.composite_token.term_id(); self.num_docs];
+                self.columns.push(new_column);
+                template_token.token = IndexingTemplateToken::new_variable(column_index);
+            }
+            IndexingTemplateToken::Whitespace(num) => {
+                let white_space = " ".repeat(*num as usize);
+                let term_id = term_hash_map.mutate_or_create(&white_space, false);
+                // This position is now variable
+                let column_index = self.columns.len();
+                let new_column = vec![term_id; self.num_docs];
+                self.columns.push(new_column);
+                template_token.token = IndexingTemplateToken::new_variable(column_index);
+            }
+            IndexingTemplateToken::Variable { .. } => {}
+        }
+    }
+
     #[cold]
     pub fn new(tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) -> Self {
         let template_tokens = tokens
@@ -298,7 +354,7 @@ pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryInde
 
     PreliminaryIndex {
         term_hash_map,
-        preliminary_docs,
+        doc_groups: preliminary_docs,
     }
 }
 
@@ -354,7 +410,7 @@ pub fn term_id_idx_to_template_ids(prelim_index: &PreliminaryIndex) -> Vec<Singl
         vec![SingleOrHashSet::default(); prelim_index.term_hash_map.len()];
 
     // TODO: BUG template_id is not known here yet (correct now, but not in the future)
-    for (template_id, group) in prelim_index.preliminary_docs.values().enumerate() {
+    for (template_id, group) in prelim_index.doc_groups.values().enumerate() {
         for column in &group.columns {
             for term_id in column {
                 term_id_to_templates[*term_id as usize].insert(template_id as u32);
