@@ -1,6 +1,7 @@
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
+use crate::indexing::termmap::TermStore;
 use crate::tokenizer::{Token, TokenType, Tokenizer};
 use stacker::fastcmp::fast_short_slice_compare;
 
@@ -33,13 +34,15 @@ pub enum IndexingTemplateToken {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConstTemplateToken {
     pub composite_token: CompositeToken,
-    pub text: String,
+    // u64 LE bytes for numbers
+    // String for words
+    pub text: Vec<u8>,
 }
 impl ConstTemplateToken {
-    pub fn new(token: CompositeToken, text: &str) -> Self {
+    pub fn new(token: CompositeToken, text: Vec<u8>) -> Self {
         ConstTemplateToken {
             composite_token: token,
-            text: text.to_string(),
+            text,
         }
     }
     pub fn term_id(&self) -> u32 {
@@ -106,18 +109,20 @@ impl PreliminaryIndex {
 
         // Dictionary stats
         // Avg length of terms
-        let total_terms = self.term_hash_map.len();
+        let total_terms = self.term_hash_map.regular.len();
         let total_length: usize = self
             .term_hash_map
+            .regular
             .iter()
             .map(|(term_bytes, _)| term_bytes.len())
             .sum::<usize>();
         let avg_length = total_length as f32 / total_terms as f32;
         println!("Total Terms: {total_terms}, Avg Length: {avg_length:.2}");
-        let total_catch_all_terms = self.term_hash_map.catch_all_len();
+        let total_catch_all_terms = (&self.term_hash_map.catch_all).len();
         let total_catch_all_length: usize = self
             .term_hash_map
-            .iter_catch_all()
+            .catch_all
+            .iter()
             .map(|(term_bytes, _)| term_bytes.len())
             .sum();
         let avg_catch_all_length = total_catch_all_length as f32 / total_catch_all_terms as f32;
@@ -150,15 +155,17 @@ fn get_term_id(
     let token_type = token.token_type();
     match token {
         Token::IPv4(v)
-        | Token::Number(v)
         | Token::Uuid(v)
         | Token::Word(v)
         | Token::CatchAll(v)
         | Token::Punctuation(v) => {
-            let term_slice = &line[v.start as usize..v.end as usize];
+            let term_slice = &line.as_bytes()[v.start as usize..v.end as usize];
             term_hash_map.mutate_or_create(term_slice, is_id_like, token_type.is_catch_all())
         }
-        Token::Whitespace(num) => *num,
+        Token::Whitespace(num_whitespace) => *num_whitespace,
+        Token::Number(number) => {
+            term_hash_map.mutate_or_create(number.as_bytes(), is_id_like, token_type.is_catch_all())
+        }
     }
 }
 
@@ -239,7 +246,7 @@ impl PrelimDocGroup {
             }
             IndexingTemplateToken::Whitespace(num) => {
                 let white_space = " ".repeat(*num as usize);
-                let term_id = term_hash_map.mutate_or_create(&white_space, false, false);
+                let term_id = term_hash_map.mutate_or_create(white_space.as_bytes(), false, false);
                 // This position is now variable
                 let column_index = self.columns.len();
                 let new_column = vec![term_id; self.num_docs];
@@ -267,7 +274,10 @@ impl PrelimDocGroup {
                     TemplateTokenWithMeta {
                         token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
                             ct,
-                            token.as_str(line).unwrap(),
+                            token
+                                .as_bytes(line)
+                                .expect("Token should have bytes (except whitespace)")
+                                .to_vec(),
                         )),
                         token_index: token_pos as u32,
                     }
@@ -297,8 +307,10 @@ impl PrelimDocGroup {
             match &mut template_token.token {
                 IndexingTemplateToken::Constant(existing_ct) => {
                     let token = &tokens[template_token.token_index as usize];
-                    let token_bytes = token.as_bytes(line).unwrap();
-                    if !fast_short_slice_compare(existing_ct.text.as_bytes(), token_bytes) {
+                    let token_bytes = token
+                        .as_bytes(line)
+                        .expect("Token should have bytes (except whitespace)");
+                    if !fast_short_slice_compare(&existing_ct.text, token_bytes) {
                         let ct = get_term_id(token, line, term_hash_map, false);
                         // This position is now variable
                         let column_index = self.columns.len();
@@ -469,9 +481,9 @@ pub fn term_id_idx_to_template_ids(
 ) -> (Vec<SingleOrHashSet>, Vec<SingleOrHashSet>) {
     // TODO: BUG template_id is not known here yet (correct now, but probably not in the future)
     let mut catch_all_term_id_to_templates: Vec<SingleOrHashSet> =
-        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.catch_all_len()];
+        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.catch_all.len()];
     let mut term_id_to_templates: Vec<SingleOrHashSet> =
-        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.len()];
+        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.regular.len()];
 
     // TODO: BUG template_id is not known here yet (correct now, but not in the future)
     for (template_id, group) in prelim_index.doc_groups.values().enumerate() {

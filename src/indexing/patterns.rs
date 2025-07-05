@@ -8,7 +8,7 @@ type TermIdMap<'a> = Vec<&'a [u8]>;
 // Token groups that can be merged in a template
 enum MergeableTokenGroup {
     // Can merge if the String matches
-    Constant(String),
+    Constant(Vec<u8>),
     // Can always be merged currently
     Variable,
     // Can merge if the number of whitespace tokens matches
@@ -24,7 +24,7 @@ impl MergeableTokenGroup {
                 if num_docs < 1000 {
                     MergeableTokenGroup::Variable
                 } else {
-                    MergeableTokenGroup::Constant(constant_token.text.to_string())
+                    MergeableTokenGroup::Constant(constant_token.text.to_vec())
                 }
             }
             IndexingTemplateToken::Variable { token_type, .. } => {

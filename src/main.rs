@@ -3,6 +3,7 @@ use std::io::BufRead;
 use std::path::Path;
 use std::{fs, io};
 
+use moshiki::constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME};
 use moshiki::indexing::IndexWriter;
 
 struct Report {
@@ -10,6 +11,8 @@ struct Report {
     throughput: f64,
     input_size: u64,
     output_size: u64,
+    catch_all_dictionary_size: u64,
+    dictionary_size: u64,
 }
 impl Report {
     pub fn compression_ratio(&self) -> f64 {
@@ -23,6 +26,12 @@ impl Report {
     fn output_size_mb(&self) -> f64 {
         self.output_size as f64 / 1024.0 / 1024.0
     }
+    fn catch_all_dict_size_mb(&self) -> f64 {
+        self.catch_all_dictionary_size as f64 / 1024.0 / 1024.0
+    }
+    fn dictionary_size_mb(&self) -> f64 {
+        self.dictionary_size as f64 / 1024.0 / 1024.0
+    }
 }
 
 fn print_reports(reports: &[Report]) {
@@ -33,23 +42,27 @@ fn print_reports(reports: &[Report]) {
     );
 
     println!(
-        "{:<name_width$}  {:>15}  {:>15}  {:>15} {:>15}",
+        "{:<name_width$}  {:>15}  {:>15}  {:>15} {:>15} {:>15} {:>15}",
         "File Name",
         "Throughput (MB/s)",
         "Input Size (MB)",
         "Output Size (MB)",
         "Compression Ratio",
+        "Catch-All Dict Size (MB)",
+        "Dict Size (MB)",
         name_width = name_width
     );
 
     for r in reports {
         println!(
-            "{:<name_width$}  {:>15.2}  {:>15.2}  {:>15.2} {:>15.4}",
+            "{:<name_width$}  {:>15.2}  {:>15.2}  {:>15.2} {:>15.4} {:>15.2} {:>15.2}",
             r.file_name,
             r.throughput,
             r.input_size_mb(),
             r.output_size_mb(),
             r.compression_ratio(),
+            r.catch_all_dict_size_mb(),
+            r.dictionary_size_mb(),
             name_width = name_width
         );
     }
@@ -90,11 +103,21 @@ fn generate_report(ndjson_files: &[String], output_folder: &str) -> io::Result<(
         let file_size = fs::metadata(ndjson_file)
             .expect("Failed to get file metadata")
             .len();
+        let output_folder = Path::new(output_folder);
+        let dict_size = fs::metadata(output_folder.join(DICTIONARY_NAME))
+            .map(|md| md.len())
+            .unwrap_or(0);
+        let catch_all_dictionary_size = fs::metadata(output_folder.join(CATCH_ALL_DICTIONARY_NAME))
+            .map(|md| md.len())
+            .unwrap_or(0);
+
         reports.push(Report {
             file_name: ndjson_file.clone(),
             throughput: (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64(),
             input_size: file_size,
             output_size: folder_size(output_folder)?,
+            catch_all_dictionary_size,
+            dictionary_size: dict_size,
         });
     }
     print_reports(&reports);

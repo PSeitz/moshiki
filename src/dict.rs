@@ -4,6 +4,7 @@ use std::path::Path;
 use fxhash::FxHashMap;
 use tantivy_common::file_slice::FileSlice;
 
+use crate::constants::DICTIONARY_NAME;
 use crate::indexing::write_dict::VecU32ValueSSTable;
 use crate::tokenizer::tokenize;
 
@@ -13,7 +14,7 @@ pub struct Dict {
 
 impl Dict {
     pub fn new(output_folder: &str) -> io::Result<Self> {
-        let dictionary_path = Path::new(output_folder).join("dictionary.fst");
+        let dictionary_path = Path::new(output_folder).join(DICTIONARY_NAME);
         let file = FileSlice::open(&dictionary_path)?;
         let dictionary = tantivy_sstable::Dictionary::<VecU32ValueSSTable>::open(file).unwrap();
         Ok(Dict { dictionary })
@@ -24,7 +25,7 @@ impl Dict {
     pub fn search(&self, query: &str) -> io::Result<FxHashMap<u32, Vec<u32>>> {
         let mut term_ids_to_template_ids: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
         for token in tokenize(query) {
-            if let Some(term) = token.as_str(query) {
+            if let Some(term) = token.as_bytes(query) {
                 if let Ok(Some((term_ord, template_ids))) = self.search_single_term(term) {
                     term_ids_to_template_ids
                         .entry(term_ord)
@@ -37,7 +38,7 @@ impl Dict {
     }
     /// Search for a singe term in the dictionary and return its term ID and associated template
     /// IDs.
-    pub fn search_single_term(&self, term: &str) -> io::Result<Option<(u32, Vec<u32>)>> {
+    pub fn search_single_term(&self, term: &[u8]) -> io::Result<Option<(u32, Vec<u32>)>> {
         if let Ok(Some(term_ord)) = self.dictionary.term_ord(term) {
             return Ok(self
                 .dictionary

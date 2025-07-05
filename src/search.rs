@@ -28,7 +28,7 @@ impl Searcher {
 
     /// Search for a singe term in the dictionary and return its term ID and associated template
     /// IDs.
-    pub fn search_single_term(&self, term: &str) -> io::Result<Option<(u32, Vec<u32>)>> {
+    pub fn search_single_term(&self, term: &[u8]) -> io::Result<Option<(u32, Vec<u32>)>> {
         self.dictionary.search_single_term(term)
     }
 

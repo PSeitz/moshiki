@@ -23,7 +23,7 @@ impl From<&IndexingTemplate> for Template {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TemplateToken {
-    Constant(String),
+    Constant(Vec<u8>),
     Variable,
     Whitespace(u32),
 }
@@ -31,7 +31,7 @@ impl From<&TemplateTokenWithMeta> for TemplateToken {
     fn from(token_with_meta: &TemplateTokenWithMeta) -> Self {
         match token_with_meta.token {
             indexing::IndexingTemplateToken::Constant(ref const_token) => {
-                TemplateToken::Constant(const_token.text.to_string())
+                TemplateToken::Constant(const_token.text.to_vec())
             }
             indexing::IndexingTemplateToken::Variable { .. } => TemplateToken::Variable,
             indexing::IndexingTemplateToken::Whitespace(id) => TemplateToken::Whitespace(id),

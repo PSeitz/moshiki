@@ -10,7 +10,10 @@ use super::{
     write_columns::write_column,
     write_dict::write_dictionary_and_generate_mapping,
 };
-use crate::templates::write_templates;
+use crate::{
+    constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME},
+    templates::write_templates,
+};
 
 pub struct IndexWriter {
     output_folder: PathBuf,
@@ -32,16 +35,14 @@ impl IndexWriter {
         assign_template_ids(&mut preliminary_index);
         let (term_id_idx, term_id_idx_catch_all) = term_id_idx_to_template_ids(&preliminary_index);
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
-            &self.output_folder,
-            &preliminary_index.term_hash_map,
+            &self.output_folder.join(DICTIONARY_NAME),
+            &preliminary_index.term_hash_map.regular,
             &term_id_idx,
-            false,
         )?;
         let old_catch_all_to_new_id_map = write_dictionary_and_generate_mapping(
-            &self.output_folder,
-            &preliminary_index.term_hash_map,
+            &self.output_folder.join(CATCH_ALL_DICTIONARY_NAME),
+            &preliminary_index.term_hash_map.catch_all,
             &term_id_idx_catch_all,
-            true,
         )?;
 
         let templates_path = Path::new(&self.output_folder).join("templates.json");

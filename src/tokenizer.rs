@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::ops::Range;
+use std::{fmt::Display, ops::Range};
 
 const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
     let mut lookup = [false; 256];
@@ -79,12 +79,12 @@ pub fn reconstruct_from_tokens(input: &str, tokens: impl Iterator<Item = Token>)
     tokens
         .map(|t| match t {
             Token::IPv4(r)
-            | Token::Number(r)
             | Token::Uuid(r)
             | Token::Word(r)
             | Token::CatchAll(r)
             | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
             Token::Whitespace(s) => " ".repeat(s as usize),
+            Token::Number(r) => r.to_string(),
         })
         .collect()
 }
@@ -93,26 +93,60 @@ pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec
     tokens
         .map(|t| match t {
             Token::IPv4(r)
-            | Token::Number(r)
             | Token::Uuid(r)
             | Token::Word(r)
             | Token::CatchAll(r)
             | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
             Token::Whitespace(s) => " ".repeat(s as usize),
+            Token::Number(r) => r.to_string(),
         })
         .collect()
 }
 
 /// Typed token kinds with zero allocations
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Token {
     IPv4(Range<u32>),
-    Number(Range<u32>),
+    Number(Number), // u64 little endian representation
     Uuid(Range<u32>),
     Word(Range<u32>),
     Punctuation(Range<u32>),
     Whitespace(u32),
     CatchAll(Range<u32>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Number {
+    F64([u8; 8]),
+    /// Represents u64 as little-endian bytes
+    U64([u8; 8]),
+}
+impl From<u64> for Number {
+    fn from(num: u64) -> Self {
+        Number::U64(num.to_le_bytes())
+    }
+}
+impl From<f64> for Number {
+    fn from(num: f64) -> Self {
+        Number::F64(num.to_le_bytes())
+    }
+}
+impl Display for Number {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Number::F64(bytes) => write!(f, "{}", f64::from_le_bytes(*bytes)),
+            Number::U64(bytes) => write!(f, "{}", u64::from_le_bytes(*bytes)),
+        }
+    }
+}
+
+impl Number {
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Number::F64(bytes) => bytes,
+            Number::U64(bytes) => bytes,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
@@ -174,28 +208,28 @@ impl Token {
         3 // 7 token types fit in 3 bits (2^3 = 8)
     }
     #[inline]
-    pub fn as_str<'a>(&self, input: &'a str) -> Option<&'a str> {
+    pub fn to_string(&self, input: &str) -> String {
         match self {
             Token::Word(r)
-            | Token::Number(r)
             | Token::IPv4(r)
             | Token::Uuid(r)
             | Token::CatchAll(r)
-            | Token::Punctuation(r) => Some(&input[r.start as usize..r.end as usize]),
-            Token::Whitespace(_) => None,
+            | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
+            Token::Whitespace(num) => " ".repeat(*num as usize),
+            Token::Number(num) => num.to_string(),
         }
     }
 
     #[inline]
-    /// Allows to remove some boundary checks
-    pub fn as_bytes<'a>(&self, input: &'a str) -> Option<&'a [u8]> {
+    pub fn as_bytes<'a>(&'a self, input: &'a str) -> Option<&'a [u8]> {
         match self {
             Token::Word(r)
-            | Token::Number(r)
             | Token::IPv4(r)
             | Token::Uuid(r)
             | Token::CatchAll(r)
-            | Token::Punctuation(r) => Some(&(input.as_bytes()[r.start as usize..r.end as usize])),
+            | Token::Punctuation(r) => Some(&input.as_bytes()[r.start as usize..r.end as usize]),
+            Token::Number(n) => Some(n.as_bytes()),
+            // White is ignored for now
             Token::Whitespace(_) => None,
         }
     }
@@ -204,25 +238,9 @@ impl Token {
     pub(crate) fn is_whitespace(&self) -> bool {
         matches!(self, Token::Whitespace(_))
     }
-
-    pub fn len(&self) -> u32 {
-        match self {
-            Token::Word(r)
-            | Token::Number(r)
-            | Token::IPv4(r)
-            | Token::Uuid(r)
-            | Token::CatchAll(r)
-            | Token::Punctuation(r) => r.end - r.start,
-            Token::Whitespace(len) => *len,
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
 }
 
-const MAX_TOKENS: usize = 10000;
+const MAX_TOKENS: usize = 40;
 
 /// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
 /// (excluding '.', '-', and '_' so tokens like IPs, hyphenated IDs, and snake_case stay intact)
@@ -296,7 +314,18 @@ impl<'a> Iterator for Tokenizer<'a> {
             Token::IPv4(start..self.pos)
         } else if let Some(num_bytes) = is_number(bytes) {
             self.pos += num_bytes as u32;
-            Token::Number(start..self.pos)
+            // Convert to u64, as Number is defined as u64
+            let num_str = &self.input[start as usize..self.pos as usize];
+            let number = num_str.parse::<u64>();
+            match number {
+                Ok(n) => Token::Number(n.into()),
+                Err(_) => {
+                    let num = num_str
+                        .parse::<f64>()
+                        .expect("Failed to parse number as f64");
+                    Token::Number(num.into())
+                }
+            }
         } else if let Some(num_bytes) = is_uuid(bytes) {
             self.pos += num_bytes as u32;
             Token::Uuid(start..self.pos)
@@ -492,7 +521,7 @@ mod tests {
             assert_eq!(tok.token_type(), expected_types[i]);
             match tok {
                 Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
-                _ => assert_eq!(tok.as_str(line).unwrap(), *expected_str),
+                _ => assert_eq!(tok.to_string(line), *expected_str),
             }
         }
 
@@ -539,7 +568,7 @@ mod tests {
             assert_eq!(tok.token_type(), expected_types[i]);
             match tok {
                 Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
-                _ => assert_eq!(tok.as_str(line).unwrap(), *expected_str),
+                _ => assert_eq!(tok.to_string(line), *expected_str),
             }
         }
 
@@ -682,7 +711,7 @@ mod tests {
             assert_eq!(tok.token_type(), expected_types[i]);
             match tok {
                 Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
-                _ => assert_eq!(tok.as_str(line).unwrap(), *expected_str),
+                _ => assert_eq!(tok.to_string(line), *expected_str),
             }
         }
     }
@@ -696,6 +725,6 @@ mod tests {
         let toks: Vec<_> = tokenize(&line);
         assert_eq!(toks.len(), 101);
         assert_eq!(toks[100].token_type(), TokenType::CatchAll);
-        assert_eq!(toks[100].as_str(&line).unwrap(), "a a a a a b b b b b ");
+        assert_eq!(toks[100].to_string(&line), "a a a a a b b b b b ");
     }
 }

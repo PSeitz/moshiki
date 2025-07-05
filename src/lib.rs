@@ -1,3 +1,4 @@
+pub mod constants;
 pub mod dict;
 pub mod indexing;
 pub mod search;

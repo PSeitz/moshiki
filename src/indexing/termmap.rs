@@ -1,145 +1,149 @@
 use stacker::ArenaHashMap;
+use std::iter;
 
-/// A structure that stores term → id mappings used by the indexer.  
-///
-/// For *id‑like* terms (usually primary‑key values) we skip the hash map
-/// and append them to a contiguous buffer where each entry is encoded
-/// as `[u32 len | bytes | u32 id]`, all little‑endian.
-///
+pub trait TermStore {
+    fn len(&self) -> usize;
+    fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_>;
+}
+
+impl<'a, T: TermStore + ?Sized> TermStore for &'a T {
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+    fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_> {
+        (**self).iter()
+    }
+}
+
+#[derive(Default)]
+pub struct RegularTermMap {
+    map: ArenaHashMap,
+    unique: Vec<u8>,
+    next: u32,
+}
+
+impl RegularTermMap {
+    fn push_unique(&mut self, bytes: &[u8], id: u32) {
+        let len = bytes.len() as u32;
+        self.unique.extend_from_slice(&len.to_le_bytes());
+        self.unique.extend_from_slice(bytes);
+        self.unique.extend_from_slice(&id.to_le_bytes());
+    }
+
+    /// Iterator over the flat buffer — kept `pub(crate)` for the tests.
+    pub(crate) fn iter_unique(&self) -> impl Iterator<Item = (&[u8], u32)> {
+        let buf = &self.unique;
+        let mut pos = 0usize;
+
+        iter::from_fn(move || {
+            if pos + 4 > buf.len() {
+                return None;
+            }
+            let len = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()) as usize;
+            pos += 4;
+            if pos + len + 4 > buf.len() {
+                return None;
+            }
+            let bytes = &buf[pos..pos + len];
+            pos += len;
+            let id = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap());
+            pos += 4;
+            Some((bytes, id))
+        })
+    }
+}
+impl RegularTermMap {
+    fn mutate_or_create(&mut self, key: &[u8], is_id_like: bool) -> u32 {
+        if is_id_like {
+            let id = self.next;
+            self.next += 1;
+            self.push_unique(key, id);
+            return id;
+        }
+
+        let mut id = 0;
+        self.map.mutate_or_create(key, |opt| {
+            id = opt.unwrap_or_else(|| {
+                let new_id = self.next;
+                self.next += 1;
+                new_id
+            });
+            id
+        });
+        id
+    }
+}
+
+impl TermStore for RegularTermMap {
+    fn len(&self) -> usize {
+        self.map.len() + self.iter_unique().count()
+    }
+
+    fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_> {
+        Box::new(
+            self.map
+                .iter()
+                .map(|(bytes, addr)| (bytes, self.map.read(addr)))
+                .chain(self.iter_unique()),
+        )
+    }
+}
+
+/* ----------------------- catch-all map (hash-only) ----------------------- */
+
+#[derive(Default)]
+pub struct CatchAllTermMap {
+    map: ArenaHashMap,
+    next: u32,
+}
+impl CatchAllTermMap {
+    fn mutate_or_create(&mut self, key: &[u8]) -> u32 {
+        let mut id = 0;
+        self.map.mutate_or_create(key, |opt| {
+            id = opt.unwrap_or_else(|| {
+                let new_id = self.next;
+                self.next += 1;
+                new_id
+            });
+            id
+        });
+        id
+    }
+}
+
+impl TermStore for CatchAllTermMap {
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_> {
+        Box::new(
+            self.map
+                .iter()
+                .map(|(bytes, addr)| (bytes, self.map.read(addr))),
+        )
+    }
+}
+
+/* --------------------------- public façade --------------------------- */
+
 #[derive(Default)]
 pub struct IndexingTermmap {
-    term_hash_map: ArenaHashMap,
-    catch_all_term_hash_map: ArenaHashMap,
-    /// Flat buffer that holds repeated (len, bytes, id) tuples.
-    unique_term_hash_map: Vec<u8>,
-    next_term_id: u32,
-    next_term_id_catch_all: u32,
-}
-
-/// Iterator over the flattened `unique_term_hash_map` buffer.
-pub struct UniqueTermIter<'a> {
-    buf: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> Iterator for UniqueTermIter<'a> {
-    type Item = (&'a [u8], u32);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.pos >= self.buf.len() {
-            return None;
-        }
-        if self.pos + 4 > self.buf.len() {
-            return None; // malformed
-        }
-        let len = u32::from_le_bytes(self.buf[self.pos..self.pos + 4].try_into().unwrap()) as usize;
-        self.pos += 4;
-        if self.pos + len + 4 > self.buf.len() {
-            return None; // malformed
-        }
-        let bytes = &self.buf[self.pos..self.pos + len];
-        self.pos += len;
-        let term_id = u32::from_le_bytes(self.buf[self.pos..self.pos + 4].try_into().unwrap());
-        self.pos += 4;
-        Some((bytes, term_id))
-    }
+    pub regular: RegularTermMap,
+    pub catch_all: CatchAllTermMap,
 }
 
 impl IndexingTermmap {
-    pub(crate) fn catch_all_len(&self) -> usize {
-        self.catch_all_term_hash_map.len()
-    }
-
-    /// Counts the number of `(bytes, id)` pairs in the flat buffer.
-    fn unique_term_count(&self) -> usize {
-        UniqueTermIter {
-            buf: &self.unique_term_hash_map,
-            pos: 0,
-        }
-        .count()
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.term_hash_map.len() + self.unique_term_count()
-    }
-
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&[u8], u32)> {
-        self.term_hash_map
-            .iter()
-            .map(|(term_bytes, old_id_addr)| {
-                let old_id: u32 = self.term_hash_map.read(old_id_addr);
-                (term_bytes, old_id)
-            })
-            .chain(self.iter_unique())
-    }
-
-    /// Returns an iterator over the unique‑term buffer.
-    pub(crate) fn iter_unique(&self) -> UniqueTermIter<'_> {
-        UniqueTermIter {
-            buf: &self.unique_term_hash_map,
-            pos: 0,
-        }
-    }
-
-    pub(crate) fn iter_catch_all(&self) -> impl Iterator<Item = (&[u8], u32)> {
-        self.catch_all_term_hash_map
-            .iter()
-            .map(|(term_bytes, old_id_addr)| {
-                let old_id: u32 = self.catch_all_term_hash_map.read(old_id_addr);
-                (term_bytes, old_id)
-            })
-    }
-
-    /// Insert the `key` if necessary and return its id.
-    #[inline]
-    pub fn mutate_or_create(&mut self, key: &str, is_id_like: bool, is_catch_all: bool) -> u32 {
+    pub fn mutate_or_create(&mut self, key: &[u8], is_id_like: bool, is_catch_all: bool) -> u32 {
         if is_catch_all {
-            let mut term_id = 0;
-            self.catch_all_term_hash_map
-                .mutate_or_create(key.as_bytes(), |opt| {
-                    if let Some(existing) = opt {
-                        term_id = existing;
-                        term_id
-                    } else {
-                        term_id = self.next_term_id_catch_all;
-                        self.next_term_id_catch_all += 1;
-                        term_id
-                    }
-                });
-            return term_id;
+            self.catch_all.mutate_or_create(key)
+        } else {
+            self.regular.mutate_or_create(key, is_id_like)
         }
-
-        if is_id_like {
-            let term_id = self.next_term_id;
-            self.next_term_id += 1;
-            self.push_unique(key.as_bytes(), term_id);
-            return term_id;
-        }
-
-        let mut term_id = 0;
-        self.term_hash_map.mutate_or_create(key.as_bytes(), |opt| {
-            if let Some(existing) = opt {
-                term_id = existing;
-                term_id
-            } else {
-                term_id = self.next_term_id;
-                self.next_term_id += 1;
-                term_id
-            }
-        });
-        term_id
-    }
-
-    /// Append an `(bytes, id)` entry to `unique_term_hash_map`.
-    fn push_unique(&mut self, bytes: &[u8], term_id: u32) {
-        let len = bytes.len() as u32;
-        self.unique_term_hash_map
-            .extend_from_slice(&len.to_le_bytes());
-        self.unique_term_hash_map.extend_from_slice(bytes);
-        self.unique_term_hash_map
-            .extend_from_slice(&term_id.to_le_bytes());
     }
 }
+
+/* ------------------------------ tests ------------------------------ */
 
 #[cfg(test)]
 mod tests {
@@ -149,27 +153,24 @@ mod tests {
     fn test_unique_serialization_and_iteration() {
         let mut map = IndexingTermmap::default();
 
-        let id1 = map.mutate_or_create("abc", true, false);
-        let id2 = map.mutate_or_create("defg", true, false);
+        let id1 = map.mutate_or_create(b"abc", true, false);
+        let id2 = map.mutate_or_create(b"defg", true, false);
         assert_eq!(id1, 0);
         assert_eq!(id2, 1);
 
-        let collected: Vec<(&[u8], u32)> = map.iter_unique().collect();
-        assert_eq!(collected.len(), 2);
-        assert_eq!(collected[0].0, b"abc");
-        assert_eq!(collected[0].1, 0);
-        assert_eq!(collected[1].0, b"defg");
-        assert_eq!(collected[1].1, 1);
+        // internal check via pub(crate) helper
+        let collected: Vec<(&[u8], u32)> = map.regular.iter_unique().collect();
+        assert_eq!(collected, vec![(b"abc".as_ref(), 0), (b"defg".as_ref(), 1)]);
     }
 
     #[test]
     fn test_len_counts_all() {
         let mut map = IndexingTermmap::default();
-        map.mutate_or_create("aaa", false, false); // normal term
-        map.mutate_or_create("bbb", true, false); // unique/id‑like term
-        map.mutate_or_create("catch", false, true); // catch‑all term
+        map.mutate_or_create(b"aaa", false, false); // regular
+        map.mutate_or_create(b"bbb", true, false); // id-like
+        map.mutate_or_create(b"catch", false, true); // catch-all
 
-        assert_eq!(map.len(), 2); // 1 normal + 1 unique
-        assert_eq!(map.catch_all_len(), 1);
+        assert_eq!(map.regular.len(), 2); // 1 regular + 1 unique
+        assert_eq!(map.catch_all.len(), 1);
     }
 }
