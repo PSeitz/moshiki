@@ -1,9 +1,8 @@
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 use crate::indexing::{self, IndexingTemplate, PreliminaryIndex, TemplateTokenWithMeta};
 
@@ -41,13 +40,20 @@ impl From<&TemplateTokenWithMeta> for TemplateToken {
 
 pub fn write_templates(index: &PreliminaryIndex, path: &Path) -> io::Result<()> {
     let file = File::create(path)?;
-    let writer = BufWriter::new(file);
+    let mut writer = BufWriter::new(file);
     let templates_only: Vec<Template> = index.iter_templates().map(Template::from).collect();
-    serde_json::to_writer(writer, &templates_only).map_err(io::Error::other)
-}
+    let bytes: Vec<u8> = postcard::to_allocvec(&templates_only).map_err(io::Error::other)?;
+    writer.write_all(&bytes)?;
+    writer.flush()?;
 
+    Ok(())
+}
 pub fn read_templates(path: &Path) -> io::Result<Vec<Template>> {
     let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    serde_json::from_reader(reader).map_err(io::Error::other)
+    let mut reader = BufReader::new(file);
+
+    let mut buf = Vec::new();
+    reader.read_to_end(&mut buf)?;
+
+    postcard::from_bytes(&buf).map_err(io::Error::other)
 }

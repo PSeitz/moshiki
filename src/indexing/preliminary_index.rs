@@ -118,7 +118,7 @@ impl PreliminaryIndex {
             .sum::<usize>();
         let avg_length = total_length as f32 / total_terms as f32;
         println!("Total Terms: {total_terms}, Avg Length: {avg_length:.2}");
-        let total_catch_all_terms = (&self.term_hash_map.catch_all).len();
+        let total_catch_all_terms = self.term_hash_map.catch_all.len();
         let total_catch_all_length: usize = self
             .term_hash_map
             .catch_all

@@ -6,7 +6,7 @@ pub trait TermStore {
     fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_>;
 }
 
-impl<'a, T: TermStore + ?Sized> TermStore for &'a T {
+impl<T: TermStore + ?Sized> TermStore for &T {
     fn len(&self) -> usize {
         (**self).len()
     }
