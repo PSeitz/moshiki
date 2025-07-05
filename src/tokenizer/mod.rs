@@ -1,4 +1,6 @@
+pub mod number;
 pub mod token;
+pub use number::*;
 pub use token::*;
 
 const MAX_TOKENS: usize = 40;
