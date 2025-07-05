@@ -24,6 +24,10 @@ tempfile = "3.20.0"
 name = "bench_tokenizer"
 harness = false
 
+[features]
+default = ["number_as_string"]
+number_as_string = []
+
 # debug in bench profile
 [profile.bench]
 debug = true

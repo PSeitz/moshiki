@@ -163,9 +163,11 @@ fn get_term_id(
             term_hash_map.mutate_or_create(term_slice, is_id_like, token_type.is_catch_all())
         }
         Token::Whitespace(num_whitespace) => *num_whitespace,
-        Token::Number(number) => {
-            term_hash_map.mutate_or_create(number.as_bytes(), is_id_like, token_type.is_catch_all())
-        }
+        Token::Number(number) => term_hash_map.mutate_or_create(
+            number.as_bytes(line),
+            is_id_like,
+            token_type.is_catch_all(),
+        ),
     }
 }
 

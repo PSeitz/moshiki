@@ -35,12 +35,13 @@ impl Number {
         }
     }
     #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self, _input: &str) -> &[u8] {
         match self {
             Number::F64(bytes) => bytes,
             Number::U64(bytes) => bytes,
         }
     }
+    #[inline]
     pub fn to_string(&self, _input: &str) -> String {
         match self {
             Number::F64(bytes) => f64::from_le_bytes(*bytes).to_string(),

@@ -1,6 +1,12 @@
+#[cfg(not(feature = "number_as_string"))]
 pub mod number;
+#[cfg(feature = "number_as_string")]
+pub mod number_as_string;
 pub mod token;
+#[cfg(not(feature = "number_as_string"))]
 pub use number::*;
+#[cfg(feature = "number_as_string")]
+pub use number_as_string::*;
 pub use token::*;
 
 const MAX_TOKENS: usize = 40;

@@ -94,7 +94,7 @@ impl Token {
             | Token::Uuid(r)
             | Token::CatchAll(r)
             | Token::Punctuation(r) => Some(&input.as_bytes()[r.start as usize..r.end as usize]),
-            Token::Number(n) => Some(n.as_bytes()),
+            Token::Number(n) => Some(n.as_bytes(input)),
             // White is ignored for now
             Token::Whitespace(_) => None,
         }
