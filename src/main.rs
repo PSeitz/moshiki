@@ -71,19 +71,14 @@ fn print_reports(reports: &[Report]) {
 /// Return the sum of `len()` for every regular file **directly inside** `dir`.
 ///
 /// * Sub-directories, symlinks, sockets, etc. are ignored.
-/// * Fails fast on the first I/O error (you can change that if you prefer).
 pub fn folder_size<P: AsRef<Path>>(dir: P) -> io::Result<u64> {
     let mut total: u64 = 0;
-
     for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let md = entry.metadata()?; // one `stat` call per entry
-
+        let md = entry?.metadata()?;
         if md.is_file() {
-            total += md.len(); // logical byte length
+            total += md.len();
         }
     }
-
     Ok(total)
 }
 

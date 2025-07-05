@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, ops::Range};
+use std::ops::Range;
 
 const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
     let mut lookup = [false; 256];
@@ -84,7 +84,7 @@ pub fn reconstruct_from_tokens(input: &str, tokens: impl Iterator<Item = Token>)
             | Token::CatchAll(r)
             | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
             Token::Whitespace(s) => " ".repeat(s as usize),
-            Token::Number(r) => r.to_string(),
+            Token::Number(r) => r.to_string(input),
         })
         .collect()
 }
@@ -98,7 +98,7 @@ pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec
             | Token::CatchAll(r)
             | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
             Token::Whitespace(s) => " ".repeat(s as usize),
-            Token::Number(r) => r.to_string(),
+            Token::Number(r) => r.to_string(input),
         })
         .collect()
 }
@@ -122,29 +122,44 @@ pub enum Number {
     U64([u8; 8]),
 }
 impl From<u64> for Number {
+    #[inline]
     fn from(num: u64) -> Self {
         Number::U64(num.to_le_bytes())
     }
 }
 impl From<f64> for Number {
+    #[inline]
     fn from(num: f64) -> Self {
         Number::F64(num.to_le_bytes())
     }
 }
-impl Display for Number {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Number::F64(bytes) => write!(f, "{}", f64::from_le_bytes(*bytes)),
-            Number::U64(bytes) => write!(f, "{}", u64::from_le_bytes(*bytes)),
-        }
-    }
-}
 
 impl Number {
+    #[inline]
+    pub fn new(input: &str, range: Range<usize>) -> Self {
+        let num_str = &input[range];
+        let number = num_str.parse::<u64>();
+        match number {
+            Ok(n) => n.into(),
+            Err(_) => {
+                let num = num_str
+                    .parse::<f64>()
+                    .expect("Failed to parse number as f64");
+                num.into()
+            }
+        }
+    }
+    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             Number::F64(bytes) => bytes,
             Number::U64(bytes) => bytes,
+        }
+    }
+    pub fn to_string(&self, _input: &str) -> String {
+        match self {
+            Number::F64(bytes) => f64::from_le_bytes(*bytes).to_string(),
+            Number::U64(bytes) => u64::from_le_bytes(*bytes).to_string(),
         }
     }
 }
@@ -216,7 +231,7 @@ impl Token {
             | Token::CatchAll(r)
             | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
             Token::Whitespace(num) => " ".repeat(*num as usize),
-            Token::Number(num) => num.to_string(),
+            Token::Number(num) => num.to_string(input),
         }
     }
 
@@ -314,19 +329,8 @@ impl<'a> Iterator for Tokenizer<'a> {
             Token::IPv4(start..self.pos)
         } else if let Some(num_bytes) = is_number(bytes) {
             self.pos += num_bytes as u32;
-            // Convert to u64, as Number is defined as u64
-            let num_str = &self.input[start as usize..self.pos as usize];
-            let number = num_str.parse::<u64>();
-            match number {
-                Ok(n) => Token::Number(n.into()),
-                Err(_) => {
-                    let num = num_str
-                        .parse::<f64>()
-                        .expect("Failed to parse number as f64");
-                    Token::Number(num.into())
-                }
-            }
-        } else if let Some(num_bytes) = is_uuid(bytes) {
+            Token::Number(Number::new(self.input, start as usize..self.pos as usize))
+        } else if let Some(num_bytes) = is_uuid_v4(bytes) {
             self.pos += num_bytes as u32;
             Token::Uuid(start..self.pos)
         //} else if let Some(n) = is_url_chunk(bytes) {
@@ -413,7 +417,7 @@ fn is_number(bytes: &[u8]) -> Option<usize> {
 /// Simple UUID v4-ish check (8-4-4-4-12 pattern, 36 bytes total)
 /// Returns the number of bytes consumed (36) on success.
 #[inline]
-fn is_uuid(bytes: &[u8]) -> Option<usize> {
+fn is_uuid_v4(bytes: &[u8]) -> Option<usize> {
     // Quickcheck first character
     if bytes.len() < 36 || !HEX_DIGIT_LOOKUP_TABLE[bytes[0] as usize] {
         return None; // too short or first char is not a hex digit
@@ -422,17 +426,13 @@ fn is_uuid(bytes: &[u8]) -> Option<usize> {
     if bytes[8] != b'-' || bytes[13] != b'-' || bytes[18] != b'-' || bytes[23] != b'-' {
         return None; // wrong separator positions
     }
-
-    for i in 0..36 {
-        let b = bytes[i];
-        match i {
-            8 | 13 | 18 | 23 => {
-                continue; // already checked
-            }
-            _ => {
-                if !HEX_DIGIT_LOOKUP_TABLE[b as usize] {
-                    return None; // non-hex digit
-                }
+    // Ranges without the separators
+    let ranges_to_check = [0..8, 9..13, 14..18, 19..23, 24..36];
+    // Check each range for hex digits
+    for range in ranges_to_check.iter() {
+        for &b in &bytes[range.clone()] {
+            if !HEX_DIGIT_LOOKUP_TABLE[b as usize] {
+                return None; // non-hex digit found
             }
         }
     }
