@@ -1,5 +1,7 @@
-use serde::{Deserialize, Serialize};
-use std::ops::Range;
+pub mod token;
+pub use token::*;
+
+const MAX_TOKENS: usize = 40;
 
 const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
     let mut lookup = [false; 256];
@@ -103,160 +105,6 @@ pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec
         .collect()
 }
 
-/// Typed token kinds with zero allocations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Token {
-    IPv4(Range<u32>),
-    Number(Number), // u64 little endian representation
-    Uuid(Range<u32>),
-    Word(Range<u32>),
-    Punctuation(Range<u32>),
-    Whitespace(u32),
-    CatchAll(Range<u32>),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Number {
-    F64([u8; 8]),
-    /// Represents u64 as little-endian bytes
-    U64([u8; 8]),
-}
-impl From<u64> for Number {
-    #[inline]
-    fn from(num: u64) -> Self {
-        Number::U64(num.to_le_bytes())
-    }
-}
-impl From<f64> for Number {
-    #[inline]
-    fn from(num: f64) -> Self {
-        Number::F64(num.to_le_bytes())
-    }
-}
-
-impl Number {
-    #[inline]
-    pub fn new(input: &str, range: Range<usize>) -> Self {
-        let num_str = &input[range];
-        let number = num_str.parse::<u64>();
-        match number {
-            Ok(n) => n.into(),
-            Err(_) => {
-                let num = num_str
-                    .parse::<f64>()
-                    .expect("Failed to parse number as f64");
-                num.into()
-            }
-        }
-    }
-    #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Number::F64(bytes) => bytes,
-            Number::U64(bytes) => bytes,
-        }
-    }
-    pub fn to_string(&self, _input: &str) -> String {
-        match self {
-            Number::F64(bytes) => f64::from_le_bytes(*bytes).to_string(),
-            Number::U64(bytes) => u64::from_le_bytes(*bytes).to_string(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
-#[repr(u8)]
-pub enum TokenType {
-    Word = 1,
-    Number = 2,
-    IPv4 = 3,
-    Uuid = 4,
-    Punctuation = 5,
-    Whitespace = 6,
-    CatchAll = 7,
-}
-
-impl TokenType {
-    pub fn is_catch_all(&self) -> bool {
-        *self == TokenType::CatchAll
-    }
-    pub fn is_whitespace(&self) -> bool {
-        *self == TokenType::Whitespace
-    }
-}
-
-impl From<u8> for TokenType {
-    #[inline]
-    fn from(val: u8) -> Self {
-        match val {
-            1 => TokenType::Word,
-            2 => TokenType::Number,
-            3 => TokenType::IPv4,
-            4 => TokenType::Uuid,
-            5 => TokenType::Punctuation,
-            6 => TokenType::Whitespace,
-            7 => TokenType::CatchAll,
-            _ => panic!("Invalid token type"),
-        }
-    }
-}
-
-/// Retrun an ID for each token type
-impl Token {
-    #[inline]
-    /// They start from 1, so we can use them for the fingerprint and differentiate from
-    /// doesn't exist token type (0).
-    pub fn token_type(&self) -> TokenType {
-        match self {
-            Token::Word(_) => TokenType::Word,
-            Token::Number(_) => TokenType::Number,
-            Token::IPv4(_) => TokenType::IPv4,
-            Token::Uuid(_) => TokenType::Uuid,
-            Token::Punctuation(_) => TokenType::Punctuation,
-            Token::Whitespace(_) => TokenType::Whitespace,
-            Token::CatchAll(_) => TokenType::CatchAll,
-        }
-    }
-
-    #[inline]
-    pub const fn type_id_num_bits() -> u8 {
-        3 // 7 token types fit in 3 bits (2^3 = 8)
-    }
-    #[inline]
-    pub fn to_string(&self, input: &str) -> String {
-        match self {
-            Token::Word(r)
-            | Token::IPv4(r)
-            | Token::Uuid(r)
-            | Token::CatchAll(r)
-            | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
-            Token::Whitespace(num) => " ".repeat(*num as usize),
-            Token::Number(num) => num.to_string(input),
-        }
-    }
-
-    #[inline]
-    pub fn as_bytes<'a>(&'a self, input: &'a str) -> Option<&'a [u8]> {
-        match self {
-            Token::Word(r)
-            | Token::IPv4(r)
-            | Token::Uuid(r)
-            | Token::CatchAll(r)
-            | Token::Punctuation(r) => Some(&input.as_bytes()[r.start as usize..r.end as usize]),
-            Token::Number(n) => Some(n.as_bytes()),
-            // White is ignored for now
-            Token::Whitespace(_) => None,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn is_whitespace(&self) -> bool {
-        matches!(self, Token::Whitespace(_))
-    }
-}
-
-const MAX_TOKENS: usize = 40;
-
 /// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
 /// (excluding '.', '-', and '_' so tokens like IPs, hyphenated IDs, and snake_case stay intact)
 pub struct Tokenizer<'a> {
@@ -327,6 +175,9 @@ impl<'a> Iterator for Tokenizer<'a> {
         let token = if let Some(num_bytes) = is_ipv4(bytes) {
             self.pos += num_bytes as u32;
             Token::IPv4(start..self.pos)
+        } else if let Some(num_bytes) = is_composite_id(bytes) {
+            self.pos += num_bytes as u32;
+            Token::Word(start..self.pos)
         } else if let Some(num_bytes) = is_number(bytes) {
             self.pos += num_bytes as u32;
             Token::Number(Number::new(self.input, start as usize..self.pos as usize))
@@ -345,6 +196,44 @@ impl<'a> Iterator for Tokenizer<'a> {
         self.token_count += 1;
         Some(token)
     }
+}
+
+/// Recognize composite IDs (alphanumeric segments with '-', ':', '_')
+/// Quick 4-byte heuristic: ensure mix of digit, uppercase letter, and one of '-', ':' or '_' in the first 4 bytes
+#[inline]
+fn is_composite_id(bytes: &[u8]) -> Option<usize> {
+    // Quick check: first byte must be one of a digit, uppercase letter, or one of '-', ':', '_'
+    if !bytes[0].is_ascii_digit() && !bytes[0].is_ascii_uppercase() {
+        return None;
+    }
+
+    // Must have at least 8 bytes for heuristic
+    if bytes.len() < 8 {
+        return None;
+    }
+    let quick_check: [u8; 8] = bytes[..8]
+        .try_into()
+        .expect("Slice length must be 8 bytes for quick check");
+    let has_upper = quick_check.iter().any(|&b| b.is_ascii_uppercase());
+    let has_digit = quick_check.iter().any(|&b| b.is_ascii_digit());
+
+    if !has_digit || !has_upper {
+        return None;
+    }
+
+    // full scan
+    let mut len = 0;
+    for &b in bytes {
+        if WHITESPACE_LOOKUP_TABLE[b as usize] {
+            break;
+        }
+        if b.is_ascii_digit() || b.is_ascii_uppercase() || b == b'-' || b == b':' || b == b'_' {
+            len += 1;
+        } else {
+            break;
+        }
+    }
+    Some(len)
 }
 
 /// Quick IPv4 check: four octets 0–255
@@ -707,8 +596,9 @@ mod tests {
             TokenType::Number,
         ];
 
-        for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
-            assert_eq!(tok.token_type(), expected_types[i]);
+        let actual_token_types = toks.iter().map(|t| t.token_type()).collect::<Vec<_>>();
+        assert_eq!(actual_token_types, expected_types);
+        for (tok, expected_str) in toks.iter().zip(expected_strs.iter()) {
             match tok {
                 Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
                 _ => assert_eq!(tok.to_string(line), *expected_str),
@@ -726,5 +616,14 @@ mod tests {
         assert_eq!(toks.len(), 101);
         assert_eq!(toks[100].token_type(), TokenType::CatchAll);
         assert_eq!(toks[100].to_string(&line), "a a a a a b b b b b ");
+    }
+
+    #[test]
+    fn test_bgl_tokens() {
+        let line = "- 1117838571 2005.06.03 R02-M1-N0-C:J12-U11 2005-06-03-15.42.51.749199";
+        let toks: Vec<_> = tokenize(line);
+        assert_eq!(toks.len(), 25);
+        let tokens_str = tokens_as_string(line, toks.iter().cloned());
+        assert!(tokens_str.contains(&"R02-M1-N0-C:J12-U11".to_string()));
     }
 }
