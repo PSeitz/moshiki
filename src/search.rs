@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Read};
 use std::path::PathBuf;
 
 use fxhash::FxHashMap;
@@ -36,10 +36,12 @@ impl Searcher {
         let zstd_column_path = get_template_path(&self.output_folder, template_id);
         let file = std::fs::File::open(zstd_column_path)?;
         let mut decoder = zstd::Decoder::new(file)?;
-        let mut buffer = Vec::new();
-        io::Read::read_to_end(&mut decoder, &mut buffer)?;
-        Ok(buffer
-            .chunks_exact(4)
-            .any(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()) == term_id))
+        let mut buffer = [0u8; 4];
+        while let Ok(()) = decoder.read_exact(&mut buffer) {
+            if u32::from_le_bytes(buffer) == term_id {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }

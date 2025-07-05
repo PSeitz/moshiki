@@ -43,7 +43,7 @@ pub fn write_dictionary_and_generate_mapping(
     };
     let wtr = BufWriter::new(File::create(dictionary_path)?);
 
-    let mut builder = tantivy_sstable::Dictionary::<VecU32ValueSSTable>::builder(wtr).unwrap();
+    let mut builder = tantivy_sstable::Dictionary::<VecU32ValueSSTable>::builder(wtr)?;
 
     // We may have duplicate terms, so we need to ensure that we assign the same new ID to the
     // same term and not insert it multiple times.
@@ -72,7 +72,7 @@ pub fn write_dictionary_and_generate_mapping(
             template_ids.sort_unstable();
         }
 
-        builder.insert(term_bytes, &template_ids).unwrap();
+        builder.insert(term_bytes, &template_ids)?;
         template_ids.clear();
         new_id += 1;
     }

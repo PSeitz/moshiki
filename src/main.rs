@@ -15,6 +15,14 @@ impl Report {
     pub fn compression_ratio(&self) -> f64 {
         self.output_size as f64 / self.input_size as f64
     }
+
+    fn input_size_mb(&self) -> f64 {
+        self.input_size as f64 / 1024.0 / 1024.0
+    }
+
+    fn output_size_mb(&self) -> f64 {
+        self.output_size as f64 / 1024.0 / 1024.0
+    }
 }
 
 fn print_reports(reports: &[Report]) {
@@ -39,8 +47,8 @@ fn print_reports(reports: &[Report]) {
             "{:<name_width$}  {:>15.2}  {:>15.2}  {:>15.2} {:>15.4}",
             r.file_name,
             r.throughput,
-            r.input_size as f64 / 1024.0 / 1024.0,
-            r.output_size as f64 / 1024.0 / 1024.0,
+            r.input_size_mb(),
+            r.output_size_mb(),
             r.compression_ratio(),
             name_width = name_width
         );
@@ -133,10 +141,7 @@ pub fn index_file(ndjson_file: &str, output_folder: &str, report: bool) -> std::
     if Path::new(output_folder).exists() {
         fs::remove_dir_all(output_folder)?;
     }
-    // Create the output folder if it doesn't exist
-    if !Path::new(output_folder).exists() {
-        fs::create_dir_all(output_folder)?;
-    }
+    fs::create_dir_all(output_folder)?;
 
     let file = fs::File::open(ndjson_file)?;
     let reader = std::io::BufReader::new(file);

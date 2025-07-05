@@ -36,18 +36,16 @@ impl IndexWriter {
             &preliminary_index.term_hash_map,
             &term_id_idx,
             false,
-        )
-        .unwrap();
+        )?;
         let old_catch_all_to_new_id_map = write_dictionary_and_generate_mapping(
             &self.output_folder,
             &preliminary_index.term_hash_map,
             &term_id_idx_catch_all,
             true,
-        )
-        .unwrap();
+        )?;
 
         let templates_path = Path::new(&self.output_folder).join("templates.json");
-        write_templates(&preliminary_index, &templates_path).unwrap();
+        write_templates(&preliminary_index, &templates_path)?;
 
         for group in preliminary_index.doc_groups.values() {
             write_column(
