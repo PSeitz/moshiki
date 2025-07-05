@@ -30,11 +30,19 @@ impl IndexWriter {
             preliminary_index.print_stats();
         }
         assign_template_ids(&mut preliminary_index);
-        let term_id_idx = term_id_idx_to_template_ids(&preliminary_index);
+        let (term_id_idx, term_id_idx_catch_all) = term_id_idx_to_template_ids(&preliminary_index);
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
             &self.output_folder,
             &preliminary_index.term_hash_map,
-            term_id_idx,
+            &term_id_idx,
+            false,
+        )
+        .unwrap();
+        let old_catch_all_to_new_id_map = write_dictionary_and_generate_mapping(
+            &self.output_folder,
+            &preliminary_index.term_hash_map,
+            &term_id_idx_catch_all,
+            true,
         )
         .unwrap();
 
@@ -42,7 +50,12 @@ impl IndexWriter {
         write_templates(&preliminary_index, &templates_path).unwrap();
 
         for group in preliminary_index.doc_groups.values() {
-            write_column(&self.output_folder, group, &old_to_new_id_map)?;
+            write_column(
+                &self.output_folder,
+                group,
+                &old_to_new_id_map,
+                &old_catch_all_to_new_id_map,
+            )?;
         }
         Ok(())
     }

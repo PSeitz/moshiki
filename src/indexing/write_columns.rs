@@ -11,12 +11,17 @@ pub fn write_column(
     folder: &Path,
     group: &PrelimDocGroup,
     old_to_new_id_map: &[u32],
+    old_catch_all_to_new_id_map: &[u32],
 ) -> std::io::Result<()> {
     let mut byte_buffer = Vec::new();
-    for term_id in group.iter_columns() {
+    for (is_catch_all, term_id) in group.iter_columns() {
         for term_id in term_id {
             // Convert the term ID to the new ID using the mapping
-            let new_term_id = old_to_new_id_map[*term_id as usize];
+            let new_term_id = if is_catch_all {
+                &old_catch_all_to_new_id_map[*term_id as usize]
+            } else {
+                &old_to_new_id_map[*term_id as usize]
+            };
             // Append the new term ID to the byte buffer
             byte_buffer.extend_from_slice(&new_term_id.to_le_bytes());
         }

@@ -1,3 +1,10 @@
+use std::{
+    fs::File,
+    io::{self, BufWriter},
+    path::Path,
+};
+
+use super::{SingleOrHashSet, termmap::IndexingTermmap};
 use tantivy_sstable::{
     SSTable,
     value::{ValueReader, ValueWriter},
@@ -6,18 +13,34 @@ use tantivy_sstable::{
 pub fn write_dictionary_and_generate_mapping(
     output_folder: &Path,
     term_hash_map: &IndexingTermmap,
-    term_id_to_template_id: Vec<SingleOrHashSet>,
+    term_id_to_template_id: &[SingleOrHashSet],
+    is_catch_all: bool,
 ) -> io::Result<Vec<u32>> {
-    let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(term_hash_map.len());
+    let len = if is_catch_all {
+        term_hash_map.catch_all_len()
+    } else {
+        term_hash_map.len()
+    };
+    let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(len);
     let max_old_id = term_hash_map.len() as u32;
-    for (term_bytes, old_id) in term_hash_map.iter() {
-        sorted_terms.push((term_bytes, old_id));
-    }
+    if is_catch_all {
+        for (term_bytes, old_id) in term_hash_map.iter_catch_all() {
+            sorted_terms.push((term_bytes, old_id));
+        }
+    } else {
+        for (term_bytes, old_id) in term_hash_map.iter() {
+            sorted_terms.push((term_bytes, old_id));
+        }
+    };
 
-    sorted_terms.sort_unstable();
+    sorted_terms.sort_unstable_by(|a, b| a.0.cmp(b.0));
 
     let mut old_to_new_id_map: Vec<u32> = vec![0; (max_old_id + 1) as usize];
-    let dictionary_path = output_folder.join("dictionary.fst");
+    let dictionary_path = if is_catch_all {
+        output_folder.join("catch_all_dictionary.fst")
+    } else {
+        output_folder.join("dictionary.fst")
+    };
     let wtr = BufWriter::new(File::create(dictionary_path)?);
 
     let mut builder = tantivy_sstable::Dictionary::<VecU32ValueSSTable>::builder(wtr).unwrap();
@@ -29,6 +52,9 @@ pub fn write_dictionary_and_generate_mapping(
 
     let mut iter = sorted_terms.into_iter().peekable();
     while let Some((term_bytes, old_id)) = iter.next() {
+        //if !is_catch_all {
+        //dbg!(std::str::from_utf8(term_bytes).unwrap_or("Invalid UTF-8"));
+        //}
         old_to_new_id_map[old_id as usize] = new_id;
         term_id_to_template_id[old_id as usize].copy_into_vec(&mut template_ids);
         while let Some((next_term_bytes, _)) = iter.peek()
@@ -61,14 +87,6 @@ impl SSTable for VecU32ValueSSTable {
     type ValueReader = VecU32ValueReader;
     type ValueWriter = VecU32ValueWriter;
 }
-
-use std::{
-    fs::File,
-    io::{self, BufWriter},
-    path::Path,
-};
-
-use super::{SingleOrHashSet, termmap::IndexingTermmap};
 
 #[derive(Default)]
 pub struct VecU32ValueReader {

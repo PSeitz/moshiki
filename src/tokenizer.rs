@@ -82,6 +82,7 @@ pub fn reconstruct_from_tokens(input: &str, tokens: impl Iterator<Item = Token>)
             | Token::Number(r)
             | Token::Uuid(r)
             | Token::Word(r)
+            | Token::CatchAll(r)
             | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
             Token::Whitespace(s) => " ".repeat(s as usize),
         })
@@ -95,6 +96,7 @@ pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec
             | Token::Number(r)
             | Token::Uuid(r)
             | Token::Word(r)
+            | Token::CatchAll(r)
             | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
             Token::Whitespace(s) => " ".repeat(s as usize),
         })
@@ -110,6 +112,7 @@ pub enum Token {
     Word(Range<u32>),
     Punctuation(Range<u32>),
     Whitespace(u32),
+    CatchAll(Range<u32>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
@@ -121,9 +124,13 @@ pub enum TokenType {
     Uuid = 4,
     Punctuation = 5,
     Whitespace = 6,
+    CatchAll = 7,
 }
 
 impl TokenType {
+    pub fn is_catch_all(&self) -> bool {
+        *self == TokenType::CatchAll
+    }
     pub fn is_whitespace(&self) -> bool {
         *self == TokenType::Whitespace
     }
@@ -139,6 +146,7 @@ impl From<u8> for TokenType {
             4 => TokenType::Uuid,
             5 => TokenType::Punctuation,
             6 => TokenType::Whitespace,
+            7 => TokenType::CatchAll,
             _ => panic!("Invalid token type"),
         }
     }
@@ -157,12 +165,13 @@ impl Token {
             Token::Uuid(_) => TokenType::Uuid,
             Token::Punctuation(_) => TokenType::Punctuation,
             Token::Whitespace(_) => TokenType::Whitespace,
+            Token::CatchAll(_) => TokenType::CatchAll,
         }
     }
 
     #[inline]
     pub const fn type_id_num_bits() -> u8 {
-        3 // 6 token types fit in 3 bits (2^3 = 8)
+        3 // 7 token types fit in 3 bits (2^3 = 8)
     }
     #[inline]
     pub fn as_str<'a>(&self, input: &'a str) -> Option<&'a str> {
@@ -171,6 +180,7 @@ impl Token {
             | Token::Number(r)
             | Token::IPv4(r)
             | Token::Uuid(r)
+            | Token::CatchAll(r)
             | Token::Punctuation(r) => Some(&input[r.start as usize..r.end as usize]),
             Token::Whitespace(_) => None,
         }
@@ -184,6 +194,7 @@ impl Token {
             | Token::Number(r)
             | Token::IPv4(r)
             | Token::Uuid(r)
+            | Token::CatchAll(r)
             | Token::Punctuation(r) => Some(&(input.as_bytes()[r.start as usize..r.end as usize])),
             Token::Whitespace(_) => None,
         }
@@ -200,6 +211,7 @@ impl Token {
             | Token::Number(r)
             | Token::IPv4(r)
             | Token::Uuid(r)
+            | Token::CatchAll(r)
             | Token::Punctuation(r) => r.end - r.start,
             Token::Whitespace(len) => *len,
         }
@@ -326,17 +338,24 @@ fn is_url_chunk(bytes: &[u8]) -> Option<usize> {
     None
 }
 
+const MAX_TOKENS: usize = 100;
+
 /// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
 /// (excluding '.', '-', and '_' so tokens like IPs, hyphenated IDs, and snake_case stay intact)
 pub struct Tokenizer<'a> {
     input: &'a str,
     pos: u32,
+    token_count: usize,
 }
 
 impl<'a> Tokenizer<'a> {
     #[inline]
     pub fn new(input: &'a str) -> Self {
-        Tokenizer { input, pos: 0 }
+        Tokenizer {
+            input,
+            pos: 0,
+            token_count: 0,
+        }
     }
 
     #[inline]
@@ -354,6 +373,13 @@ impl<'a> Iterator for Tokenizer<'a> {
             return None;
         }
 
+        if self.token_count >= MAX_TOKENS {
+            let start = self.pos;
+            self.pos = self.input.len() as u32;
+            self.token_count += 1;
+            return Some(Token::CatchAll(start..self.pos));
+        }
+
         let bytes = &self.input.as_bytes()[self.pos as usize..];
 
         // 1) Whitespace (contiguous)
@@ -363,6 +389,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                 .take_while(|&&b| WHITESPACE_LOOKUP_TABLE[b as usize])
                 .count();
             self.pos += len as u32;
+            self.token_count += 1;
             return Some(Token::Whitespace(len as u32));
         }
 
@@ -375,6 +402,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                 .take_while(|&&b| PUNCTUATION_LOOKUP_TABLE[b as usize])
                 .count();
             self.pos += len as u32;
+            self.token_count += 1;
             return Some(Token::Punctuation(start..self.pos));
         }
 
@@ -397,6 +425,7 @@ impl<'a> Iterator for Tokenizer<'a> {
             self.pos += len as u32;
             Token::Word(start..self.pos)
         };
+        self.token_count += 1;
         Some(token)
     }
 }
@@ -656,5 +685,17 @@ mod tests {
                 _ => assert_eq!(tok.as_str(line).unwrap(), *expected_str),
             }
         }
+    }
+
+    #[test]
+    fn test_max_tokens() {
+        let first_part = "a ".repeat(55); // = 110 tokens
+        let catch_all = "b ".repeat(5); // = 10 tokens
+        let line = format!("{first_part}{catch_all}");
+
+        let toks: Vec<_> = tokenize(&line);
+        assert_eq!(toks.len(), 101);
+        assert_eq!(toks[100].token_type(), TokenType::CatchAll);
+        assert_eq!(toks[100].as_str(&line).unwrap(), "a a a a a b b b b b ");
     }
 }

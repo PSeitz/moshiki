@@ -13,6 +13,8 @@ enum MergeableTokenGroup {
     Variable,
     // Can merge if the number of whitespace tokens matches
     Whitespace(u32),
+    // Catch all can only be merged with other catch alls
+    CatchAll,
 }
 
 impl MergeableTokenGroup {
@@ -25,7 +27,13 @@ impl MergeableTokenGroup {
                     MergeableTokenGroup::Constant(constant_token.text.to_string())
                 }
             }
-            IndexingTemplateToken::Variable { .. } => MergeableTokenGroup::Variable,
+            IndexingTemplateToken::Variable { token_type, .. } => {
+                if token_type.is_catch_all() {
+                    MergeableTokenGroup::CatchAll
+                } else {
+                    MergeableTokenGroup::Variable
+                }
+            }
             IndexingTemplateToken::Whitespace(num) => {
                 if num_docs < 100 {
                     MergeableTokenGroup::Variable
