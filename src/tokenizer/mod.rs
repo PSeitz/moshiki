@@ -9,7 +9,7 @@ pub use number::*;
 pub use number_as_string::*;
 pub use token::*;
 
-const MAX_TOKENS: usize = 40;
+const MAX_TOKENS: usize = 100;
 
 const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
     let mut lookup = [false; 256];
@@ -656,6 +656,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "match_composite_id")]
     fn test_bgl_tokens() {
         let line = "- 1117838571 2005.06.03 R02-M1-N0-C:J12-U11 2005-06-03-15.42.51.749199";
         let toks: Vec<_> = tokenize(line);
