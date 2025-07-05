@@ -26,7 +26,10 @@ harness = false
 
 [features]
 default = ["number_as_string"]
+# Improves performance and compression
 number_as_string = []
+# Lower performance and compression
+match_composite_id = []
 
 # debug in bench profile
 [profile.bench]

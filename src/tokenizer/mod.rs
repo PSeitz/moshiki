@@ -137,15 +137,26 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
+#[derive(Copy, Clone)]
+enum Kind {
+    IPv4,
+    Number,
+    #[cfg(feature = "match_composite_id")]
+    Composite,
+    Uuid,
+}
+
 impl<'a> Iterator for Tokenizer<'a> {
     type Item = Token;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // end-of-input
         if self.pos as usize >= self.input.len() {
             return None;
         }
 
+        // too many tokens → catch-all
         if self.token_count >= MAX_TOKENS {
             let start = self.pos;
             self.pos = self.input.len() as u32;
@@ -155,62 +166,80 @@ impl<'a> Iterator for Tokenizer<'a> {
 
         let bytes = &self.input.as_bytes()[self.pos as usize..];
 
-        // 1) Whitespace (contiguous)
+        // 1) Whitespace
         if WHITESPACE_LOOKUP_TABLE[bytes[0] as usize] {
             let len = bytes
                 .iter()
                 .take_while(|&&b| WHITESPACE_LOOKUP_TABLE[b as usize])
-                .count();
-            self.pos += len as u32;
+                .count() as u32;
+            self.pos += len;
             self.token_count += 1;
-            return Some(Token::Whitespace(len as u32));
+            return Some(Token::Whitespace(len));
         }
 
-        let start = self.pos;
-
-        // 2) Punctuation (contiguous)
+        // 2) Punctuation
         if PUNCTUATION_LOOKUP_TABLE[bytes[0] as usize] {
             let len = bytes
                 .iter()
                 .take_while(|&&b| PUNCTUATION_LOOKUP_TABLE[b as usize])
-                .count();
-            self.pos += len as u32;
+                .count() as u32;
+            let start = self.pos;
+            self.pos += len;
             self.token_count += 1;
             return Some(Token::Punctuation(start..self.pos));
         }
 
-        // 4) Classify
-        let token = if let Some(num_bytes) = is_ipv4(bytes) {
-            self.pos += num_bytes as u32;
-            Token::IPv4(start..self.pos)
-        } else if let Some(num_bytes) = is_composite_id(bytes) {
-            self.pos += num_bytes as u32;
-            Token::Word(start..self.pos)
-        } else if let Some(num_bytes) = is_number(bytes) {
-            self.pos += num_bytes as u32;
-            Token::Number(Number::new(self.input, start as usize..self.pos as usize))
-        } else if let Some(num_bytes) = is_uuid_v4(bytes) {
-            self.pos += num_bytes as u32;
-            Token::Uuid(start..self.pos)
-        //} else if let Some(n) = is_url_chunk(bytes) {
-        //self.pos += n as u32;
-        //Token::Word(start..self.pos)
-        } else {
-            let len = word_len(bytes);
+        // 3) The “classify” table
+        let start = self.pos;
+        let mut choice: Option<(Kind, usize)> = None;
 
-            self.pos += len as u32;
+        // a small table of (matcher → variant).  Composite row only if feature on.
+        #[allow(clippy::type_complexity)]
+        let matchers: &[(fn(&[u8]) -> Option<usize>, Kind)] = &[
+            (is_ipv4, Kind::IPv4),
+            (is_number, Kind::Number),
+            #[cfg(feature = "match_composite_id")]
+            (is_composite_id, Kind::Composite),
+            (is_number, Kind::Number),
+            (is_uuid_v4, Kind::Uuid),
+        ];
+
+        for &(matcher, kind) in matchers {
+            if let Some(num_bytes) = matcher(bytes) {
+                choice = Some((kind, num_bytes));
+                break;
+            }
+        }
+
+        // build the token (or fallback to a “word” of length word_len)
+        let token = if let Some((kind, num_bytes)) = choice {
+            self.pos += num_bytes as u32;
+            match kind {
+                Kind::IPv4 => Token::IPv4(start..self.pos),
+                Kind::Number => {
+                    Token::Number(Number::new(self.input, start as usize..self.pos as usize))
+                }
+                #[cfg(feature = "match_composite_id")]
+                Kind::Composite => Token::Word(start..self.pos),
+                Kind::Uuid => Token::Uuid(start..self.pos),
+            }
+        } else {
+            let len = word_len(bytes) as u32;
+            self.pos += len;
             Token::Word(start..self.pos)
         };
+
         self.token_count += 1;
         Some(token)
     }
 }
 
 /// Recognize composite IDs (alphanumeric segments with '-', ':', '_')
-/// Quick 4-byte heuristic: ensure mix of digit, uppercase letter, and one of '-', ':' or '_' in the first 4 bytes
+/// Quick 8-byte heuristic: ensure mix of digit, uppercase letter
 #[inline]
+#[cfg(feature = "match_composite_id")]
 fn is_composite_id(bytes: &[u8]) -> Option<usize> {
-    // Quick check: first byte must be one of a digit, uppercase letter, or one of '-', ':', '_'
+    // Quick check: first byte must be one of a digit, uppercase letter
     if !bytes[0].is_ascii_digit() && !bytes[0].is_ascii_uppercase() {
         return None;
     }
