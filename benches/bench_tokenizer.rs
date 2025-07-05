@@ -10,23 +10,57 @@ fn test_tokenizer(lines: &Vec<&str>) -> u32 {
         .map(|line| Tokenizer::new(line).count() as u32)
         .sum()
 }
-const LOG_LINES: &str = include_str!("../hdfs-logs");
+
+pub struct Dataset {
+    pub name: &'static str,
+    pub file_content: &'static str,
+    pub lines: Vec<&'static str>,
+}
+impl Dataset {
+    pub fn len(&self) -> usize {
+        self.file_content.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.file_content.is_empty()
+    }
+}
+impl From<(&'static str, &'static str)> for Dataset {
+    fn from(data: (&'static str, &'static str)) -> Self {
+        Dataset {
+            name: data.0,
+            file_content: data.1,
+            lines: data.1.lines().collect(),
+        }
+    }
+}
+
+pub fn get_test_data() -> Vec<Dataset> {
+    vec![
+        (
+            "hdfs-logs",
+            include_str!("../tokenizer_bench_data/hdfs-logs"),
+        )
+            .into(),
+        ("windows", include_str!("../tokenizer_bench_data/windows")).into(),
+        ("android", include_str!("../tokenizer_bench_data/android")).into(),
+    ]
+}
 
 fn bench_tokenizer() {
-    let inputs: Vec<(&str, Vec<&str>)> = vec![("hdfs-logs", LOG_LINES.lines().collect())];
+    let inputs: Vec<Dataset> = get_test_data();
     let mut runner: BenchRunner = BenchRunner::new();
 
     runner
         .add_plugin(CacheTrasher::default())
         .add_plugin(PeakMemAllocPlugin::new(GLOBAL));
 
-    for (input_name, data) in inputs.iter() {
+    for data in inputs.iter() {
         let mut group = runner.new_group();
-        group.set_name(input_name);
-        let input_size = data.iter().map(|line| line.len()).sum::<usize>();
+        group.set_name(data.name);
+        let input_size = data.lines.iter().map(|line| line.len()).sum::<usize>();
         group.set_input_size(input_size);
         group.register_with_input("tokenizer", data, move |data| {
-            let num_tokens = black_box(test_tokenizer(data));
+            let num_tokens = black_box(test_tokenizer(&data.lines));
             num_tokens as u64
         });
         group.run();
@@ -34,20 +68,22 @@ fn bench_tokenizer() {
 }
 
 fn bench_mini_index() {
-    let inputs: Vec<(&str, &str)> = vec![("hdfs-logs", LOG_LINES)];
+    let inputs: Vec<Dataset> = get_test_data();
     let mut runner: BenchRunner = BenchRunner::new();
 
     runner
         .add_plugin(CacheTrasher::default())
         .add_plugin(PeakMemAllocPlugin::new(GLOBAL));
 
-    for (input_name, data) in inputs.iter() {
+    for dataset in inputs.iter() {
         let mut group = runner.new_group();
-        group.set_name(input_name);
-        let input_size = data.len();
+        group.set_name(dataset.name);
+        let input_size = dataset.len();
         group.set_input_size(input_size);
-        group.register_with_input("mini index", data, move |data| {
-            let mini_index = black_box(preliminary_index(data.lines().map(|s| s.to_string())));
+        group.register_with_input("mini index", dataset, move |dataset| {
+            let mini_index = black_box(preliminary_index(
+                dataset.lines.iter().map(|s| s.to_string()),
+            ));
             mini_index.doc_groups.len() as u64
         });
         group.run();

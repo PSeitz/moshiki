@@ -23,10 +23,10 @@ impl IndexWriter {
         }
     }
 
-    pub fn index(&self, lines: impl Iterator<Item = String>, report: bool) -> io::Result<()> {
+    pub fn index(&self, lines: impl Iterator<Item = String>, _report: bool) -> io::Result<()> {
         let mut preliminary_index = preliminary_index(lines);
         merge_templates(&mut preliminary_index);
-        if report {
+        if std::env::var("STATS").is_ok() {
             preliminary_index.print_stats();
         }
         assign_template_ids(&mut preliminary_index);

@@ -69,8 +69,13 @@ pub fn folder_size<P: AsRef<Path>>(dir: P) -> io::Result<u64> {
 fn generate_report(ndjson_files: &[String], output_folder: &str) -> io::Result<()> {
     let mut reports = Vec::new();
 
+    print!("Indexing file: ");
     for ndjson_file in ndjson_files {
-        println!("Indexing file: {ndjson_file}");
+        if Some(ndjson_file) == ndjson_files.last() {
+            println!("{ndjson_file} ");
+        } else {
+            print!("{ndjson_file}, ");
+        }
         let start_time = std::time::Instant::now();
         index_file(ndjson_file, output_folder, false)?;
 

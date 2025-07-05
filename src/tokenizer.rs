@@ -222,6 +222,98 @@ impl Token {
     }
 }
 
+const MAX_TOKENS: usize = 10000;
+
+/// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
+/// (excluding '.', '-', and '_' so tokens like IPs, hyphenated IDs, and snake_case stay intact)
+pub struct Tokenizer<'a> {
+    input: &'a str,
+    pos: u32,
+    token_count: usize,
+}
+
+impl<'a> Tokenizer<'a> {
+    #[inline]
+    pub fn new(input: &'a str) -> Self {
+        Tokenizer {
+            input,
+            pos: 0,
+            token_count: 0,
+        }
+    }
+
+    #[inline]
+    pub fn get_text(&self) -> &'a str {
+        &self.input[self.pos as usize..]
+    }
+}
+
+impl<'a> Iterator for Tokenizer<'a> {
+    type Item = Token;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos as usize >= self.input.len() {
+            return None;
+        }
+
+        if self.token_count >= MAX_TOKENS {
+            let start = self.pos;
+            self.pos = self.input.len() as u32;
+            self.token_count += 1;
+            return Some(Token::CatchAll(start..self.pos));
+        }
+
+        let bytes = &self.input.as_bytes()[self.pos as usize..];
+
+        // 1) Whitespace (contiguous)
+        if WHITESPACE_LOOKUP_TABLE[bytes[0] as usize] {
+            let len = bytes
+                .iter()
+                .take_while(|&&b| WHITESPACE_LOOKUP_TABLE[b as usize])
+                .count();
+            self.pos += len as u32;
+            self.token_count += 1;
+            return Some(Token::Whitespace(len as u32));
+        }
+
+        let start = self.pos;
+
+        // 2) Punctuation (contiguous)
+        if PUNCTUATION_LOOKUP_TABLE[bytes[0] as usize] {
+            let len = bytes
+                .iter()
+                .take_while(|&&b| PUNCTUATION_LOOKUP_TABLE[b as usize])
+                .count();
+            self.pos += len as u32;
+            self.token_count += 1;
+            return Some(Token::Punctuation(start..self.pos));
+        }
+
+        // 4) Classify
+        let token = if let Some(num_bytes) = is_ipv4(bytes) {
+            self.pos += num_bytes as u32;
+            Token::IPv4(start..self.pos)
+        } else if let Some(num_bytes) = is_number(bytes) {
+            self.pos += num_bytes as u32;
+            Token::Number(start..self.pos)
+        } else if let Some(num_bytes) = is_uuid(bytes) {
+            self.pos += num_bytes as u32;
+            Token::Uuid(start..self.pos)
+        //} else if let Some(n) = is_url_chunk(bytes) {
+        //self.pos += n as u32;
+        //Token::Word(start..self.pos)
+        } else {
+            let len = word_len(bytes);
+
+            self.pos += len as u32;
+            Token::Word(start..self.pos)
+        };
+        self.token_count += 1;
+        Some(token)
+    }
+}
+
 /// Quick IPv4 check: four octets 0–255
 /// Returns the number of bytes consumed.
 #[inline]
@@ -336,98 +428,6 @@ fn is_url_chunk(bytes: &[u8]) -> Option<usize> {
         } // bail early
     }
     None
-}
-
-const MAX_TOKENS: usize = 100;
-
-/// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
-/// (excluding '.', '-', and '_' so tokens like IPs, hyphenated IDs, and snake_case stay intact)
-pub struct Tokenizer<'a> {
-    input: &'a str,
-    pos: u32,
-    token_count: usize,
-}
-
-impl<'a> Tokenizer<'a> {
-    #[inline]
-    pub fn new(input: &'a str) -> Self {
-        Tokenizer {
-            input,
-            pos: 0,
-            token_count: 0,
-        }
-    }
-
-    #[inline]
-    pub fn get_text(&self) -> &'a str {
-        &self.input[self.pos as usize..]
-    }
-}
-
-impl<'a> Iterator for Tokenizer<'a> {
-    type Item = Token;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.pos as usize >= self.input.len() {
-            return None;
-        }
-
-        if self.token_count >= MAX_TOKENS {
-            let start = self.pos;
-            self.pos = self.input.len() as u32;
-            self.token_count += 1;
-            return Some(Token::CatchAll(start..self.pos));
-        }
-
-        let bytes = &self.input.as_bytes()[self.pos as usize..];
-
-        // 1) Whitespace (contiguous)
-        if WHITESPACE_LOOKUP_TABLE[bytes[0] as usize] {
-            let len = bytes
-                .iter()
-                .take_while(|&&b| WHITESPACE_LOOKUP_TABLE[b as usize])
-                .count();
-            self.pos += len as u32;
-            self.token_count += 1;
-            return Some(Token::Whitespace(len as u32));
-        }
-
-        let start = self.pos;
-
-        // 2) Punctuation (contiguous)
-        if PUNCTUATION_LOOKUP_TABLE[bytes[0] as usize] {
-            let len = bytes
-                .iter()
-                .take_while(|&&b| PUNCTUATION_LOOKUP_TABLE[b as usize])
-                .count();
-            self.pos += len as u32;
-            self.token_count += 1;
-            return Some(Token::Punctuation(start..self.pos));
-        }
-
-        // 4) Classify
-        let token = if let Some(num_bytes) = is_ipv4(bytes) {
-            self.pos += num_bytes as u32;
-            Token::IPv4(start..self.pos)
-        } else if let Some(num_bytes) = is_number(bytes) {
-            self.pos += num_bytes as u32;
-            Token::Number(start..self.pos)
-        } else if let Some(num_bytes) = is_uuid(bytes) {
-            self.pos += num_bytes as u32;
-            Token::Uuid(start..self.pos)
-        //} else if let Some(n) = is_url_chunk(bytes) {
-        //self.pos += n as u32;
-        //Token::Word(start..self.pos)
-        } else {
-            let len = word_len(bytes);
-
-            self.pos += len as u32;
-            Token::Word(start..self.pos)
-        };
-        self.token_count += 1;
-        Some(token)
-    }
 }
 
 #[inline]
