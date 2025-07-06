@@ -5,6 +5,7 @@ use std::{fs, io};
 
 use moshiki::constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME};
 use moshiki::indexing::IndexWriter;
+use moshiki::search::Searcher;
 
 struct Report {
     file_name: String,
@@ -138,6 +139,18 @@ fn main() {
             return;
         }
         generate_report(files, "out").unwrap();
+        return;
+    }
+    if args.get(1) == Some(&"search".to_string()) {
+        let search_term = args.get(2).expect("Search term is required");
+        let output_folder = args.get(3).expect("Output folder is required");
+        let searcher = Searcher::new(output_folder).expect("Failed to create searcher");
+        let res = searcher
+            .search_and_retrieve(search_term)
+            .expect("Failed to search");
+        for doc in res {
+            println!("{doc}");
+        }
         return;
     }
     if args.len() < 3 {
