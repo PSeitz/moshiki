@@ -39,7 +39,7 @@ impl Template {
                     term_id_idx += 1;
                 }
                 TemplateToken::Whitespace(num) => {
-                    reconstructed.extend(std::iter::repeat(' ').take(*num as usize));
+                    reconstructed.extend(std::iter::repeat_n(' ', *num as usize));
                 }
             }
         }

@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::Write;
+use std::path::Path;
 
 use crate::indexing::PrelimDocGroup;
 
