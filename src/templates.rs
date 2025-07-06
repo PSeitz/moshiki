@@ -62,12 +62,6 @@ impl Template {
     pub(crate) fn num_docs(&self) -> usize {
         self.num_docs
     }
-    pub(crate) fn num_variables(&self) -> usize {
-        self.parts
-            .iter()
-            .filter(|token| matches!(token, TemplateToken::Variable))
-            .count()
-    }
 }
 impl From<&IndexingTemplate> for Template {
     fn from(template: &IndexingTemplate) -> Self {
