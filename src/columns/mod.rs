@@ -6,6 +6,8 @@ mod write;
 pub use read::*;
 pub use write::*;
 
-pub fn get_template_path(folder: &Path, template_id: u32) -> PathBuf {
-    folder.join(format!("template_{template_id}.zst",))
+use crate::TemplateId;
+
+pub fn get_template_path(folder: &Path, template_id: TemplateId) -> PathBuf {
+    folder.join(format!("template_{}.zst", template_id.0))
 }

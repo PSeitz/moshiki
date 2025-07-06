@@ -4,6 +4,7 @@ use std::path::Path;
 use fxhash::FxHashMap;
 use tantivy_common::file_slice::FileSlice;
 
+use crate::TemplateId;
 use crate::constants::DICTIONARY_NAME;
 use crate::indexing::write_dict::VecU32ValueSSTable;
 use crate::tokenizer::tokenize;
@@ -14,14 +15,14 @@ pub struct Dict {
 
 pub struct SearchResult {
     term_id: u32,
-    template_ids: Vec<u32>,
+    template_ids: Vec<TemplateId>,
 }
 impl SearchResult {
     pub fn term_id(&self) -> u32 {
         self.term_id
     }
 
-    pub fn template_ids(&self) -> &[u32] {
+    pub fn template_ids(&self) -> &[TemplateId] {
         &self.template_ids
     }
 }
@@ -36,8 +37,8 @@ impl Dict {
 
     /// Search for terms in the dictionary and return a mapping of term IDs to template IDs.
     /// The query is tokenized, and each token is looked up in the dictionary.
-    pub fn search(&self, query: &str) -> io::Result<FxHashMap<u32, Vec<u32>>> {
-        let mut term_ids_to_template_ids: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    pub fn search(&self, query: &str) -> io::Result<FxHashMap<u32, Vec<TemplateId>>> {
+        let mut term_ids_to_template_ids: FxHashMap<u32, Vec<TemplateId>> = FxHashMap::default();
         for token in tokenize(query) {
             if let Some(term) = token.as_bytes(query) {
                 if let Ok(Some(search_result)) = self.search_single_term(term) {
@@ -60,7 +61,10 @@ impl Dict {
                 .map(|template_ids| {
                     Some(SearchResult {
                         term_id: term_ord as u32,
-                        template_ids,
+                        template_ids: template_ids
+                            .into_iter()
+                            .map(|template_id| template_id.into())
+                            .collect(),
                     })
                 })
                 .expect("Term info should be present"));

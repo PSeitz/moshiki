@@ -18,14 +18,23 @@ impl<T: TermStore + ?Sized> TermStore for &T {
     }
 }
 
-#[derive(Default)]
 pub struct RegularTermMap {
     map: ArenaHashMap,
     unique: Vec<u8>,
     next: u32,
 }
+impl Default for RegularTermMap {
+    fn default() -> Self {
+        RegularTermMap {
+            map: ArenaHashMap::default(),
+            unique: Vec::with_capacity(1024 * 1024), // 1 MiB initial capacity
+            next: 0,
+        }
+    }
+}
 
 impl RegularTermMap {
+    #[inline]
     fn push_unique(&mut self, bytes: &[u8], id: u32) {
         let len = bytes.len() as u32;
         self.unique.extend_from_slice(&len.to_le_bytes());
@@ -56,11 +65,12 @@ impl RegularTermMap {
     }
 }
 impl RegularTermMap {
+    #[inline]
     fn mutate_or_create(&mut self, key: &[u8], is_id_like: bool) -> u32 {
         if is_id_like {
             let id = self.next;
-            self.next += 1;
             self.push_unique(key, id);
+            self.next += 1;
             return id;
         }
 
@@ -100,6 +110,7 @@ pub struct CatchAllTermMap {
     next: u32,
 }
 impl CatchAllTermMap {
+    #[inline]
     fn mutate_or_create(&mut self, key: &[u8]) -> u32 {
         let mut id = 0;
         self.map.mutate_or_create(key, |opt| {
@@ -137,6 +148,7 @@ pub struct IndexingTermmap {
 }
 
 impl IndexingTermmap {
+    #[inline]
     pub fn mutate_or_create(&mut self, key: &[u8], is_id_like: bool, is_catch_all: bool) -> u32 {
         if is_catch_all {
             self.catch_all.mutate_or_create(key)

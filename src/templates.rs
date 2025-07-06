@@ -4,6 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::TemplateId;
 use crate::constants::TEMPLATE_FILE_NAME;
 use crate::dict::Dict;
 use crate::indexing::{self, IndexingTemplate, PreliminaryIndex, TemplateTokenWithMeta};
@@ -18,7 +19,7 @@ pub enum MatchResult {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Template {
     pub num_docs: usize,
-    pub template_id: u32,
+    pub template_id: TemplateId,
     pub parts: Vec<TemplateToken>,
 }
 impl Template {

@@ -1,6 +1,7 @@
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
+use crate::TemplateId;
 use crate::indexing::termmap::TermStore;
 use crate::tokenizer::{Token, TokenType, Tokenizer};
 use stacker::fastcmp::fast_short_slice_compare;
@@ -9,7 +10,7 @@ use super::{fingerprint, termmap::IndexingTermmap};
 
 #[derive(Debug, Clone, Default)]
 pub struct IndexingTemplate {
-    pub template_id: u32,
+    pub template_id: TemplateId,
     pub num_docs: usize,
     pub tokens: Vec<TemplateTokenWithMeta>,
 }
@@ -129,6 +130,32 @@ impl PreliminaryIndex {
         let avg_catch_all_length = total_catch_all_length as f32 / total_catch_all_terms as f32;
         println!(
             "Total CatchAll Terms: {total_catch_all_terms}, Avg Length: {avg_catch_all_length:.2}"
+        );
+
+        // Print the number of: unique like, constant, and variable tokens
+        let mut num_like = 0;
+        let mut num_constant = 0;
+        let mut num_variable = 0;
+        for group in self.doc_groups.values() {
+            for template_token in &group.template.tokens {
+                match &template_token.token {
+                    IndexingTemplateToken::Constant(_) => num_constant += 1,
+                    IndexingTemplateToken::Variable { is_id_like, .. } => {
+                        num_variable += 1;
+                        if *is_id_like {
+                            num_like += 1;
+                        }
+                    }
+                    IndexingTemplateToken::Whitespace(_) => {}
+                }
+            }
+        }
+        println!(
+            "Total Tokens: {}, Constant: {}, Variable: {}, ID-like: {}",
+            num_constant + num_variable,
+            num_constant,
+            num_variable,
+            num_like
         );
     }
 }
@@ -294,8 +321,8 @@ impl PrelimDocGroup {
 
         Self {
             template: IndexingTemplate {
-                template_id: 0, // This will be set later
-                num_docs: 0,    // This will be set later
+                template_id: 0.into(), // This will be set later
+                num_docs: 0,           // This will be set later
                 tokens: template_tokens,
             },
             columns: Vec::new(),
@@ -334,7 +361,7 @@ impl PrelimDocGroup {
                     let token = &tokens[template_token.token_index as usize];
                     let term_id = get_term_id(token, line, term_hash_map, *is_id_like);
                     self.columns[*column_index].push(term_id);
-                    if self.num_docs == 1000 {
+                    if self.num_docs == 10000 {
                         *is_id_like = check_is_id_like(&self.columns[*column_index]);
                     }
                 }
@@ -347,16 +374,21 @@ impl PrelimDocGroup {
     }
 }
 
-#[cold]
 /// TODO: The check could be done on a bitvec, since we probably have very few term IDs
+#[inline(never)]
 pub fn check_is_id_like(column: &[u32]) -> bool {
     let mut seen_ids = FxHashSet::default();
     for term_id in column {
         if !seen_ids.insert(term_id) {
-            return false; // Found a duplicate, so not ID-like
+            //return false; // Found a duplicate
         }
     }
-    true // All IDs are unique
+    let unique_count = seen_ids.len();
+    let total_count = column.len();
+    let unique_ratio = unique_count as f32 / total_count as f32;
+    unique_ratio >= 0.98
+
+    //unique_count == total_count
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -2,6 +2,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+use crate::TemplateId;
+
 use super::get_template_path;
 
 pub struct Column {
@@ -38,11 +40,30 @@ impl Columns {
     pub fn iter_columns(&self) -> impl Iterator<Item = &Column> {
         self.data.iter()
     }
+    pub fn get_term_ids(&self, doc: u32) -> impl Iterator<Item = u32> + '_ {
+        self.iter_columns()
+            .flat_map(move |column| column.term_at(doc as usize))
+    }
+
+    pub fn get_doc_ids<'a>(
+        &'a self,
+        match_fn: &'a impl Fn(u32) -> bool,
+    ) -> impl Iterator<Item = u32> + 'a {
+        self.iter_columns().flat_map(move |column| {
+            column.iter().enumerate().filter_map(move |(docid, term)| {
+                if match_fn(term) {
+                    Some(docid as u32)
+                } else {
+                    None
+                }
+            })
+        })
+    }
 }
 
 pub fn decompress_column(
     folder: &Path,
-    template_id: u32,
+    template_id: TemplateId,
     num_docs: usize,
 ) -> std::io::Result<Columns> {
     let file_path = get_template_path(folder, template_id);

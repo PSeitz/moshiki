@@ -5,7 +5,23 @@ pub mod indexing;
 pub mod search;
 pub mod templates;
 pub mod tokenizer;
+use serde::{Deserialize, Serialize};
 pub use tokenizer::Token;
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub struct TemplateId(pub u32);
+impl From<u32> for TemplateId {
+    fn from(id: u32) -> Self {
+        TemplateId(id)
+    }
+}
+
+/// A document in the index, containing a template ID and a list of term IDs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Doc {
+    pub template_id: TemplateId,
+    pub term_ids: Vec<u32>,
+}
 
 #[cfg(test)]
 mod tests {
@@ -30,7 +46,7 @@ mod tests {
 
         let searcher = Searcher::new(output_folder).unwrap();
 
-        let results = searcher.search("hello").unwrap();
+        let results = searcher.search_and_retrieve("hello").unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0], "hello world");
         assert_eq!(results[1], "hello there");
@@ -48,7 +64,7 @@ mod tests {
 
         let searcher = Searcher::new(output_folder).unwrap();
 
-        let results = searcher.search("hello").unwrap();
+        let results = searcher.search_and_retrieve("hello").unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0], "hello world");
         assert_eq!(results[1], "hello there");

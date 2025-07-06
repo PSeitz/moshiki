@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use binggan::{black_box, plugins::*, BenchRunner, PeakMemAlloc, INSTRUMENTED_SYSTEM};
+use binggan::{BenchRunner, INSTRUMENTED_SYSTEM, PeakMemAlloc, black_box, plugins::*};
 use moshiki::indexing::preliminary_index;
 
 #[global_allocator]
