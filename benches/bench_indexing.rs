@@ -5,14 +5,10 @@ use std::{
 };
 
 use binggan::{black_box, plugins::*, BenchRunner, PeakMemAlloc, INSTRUMENTED_SYSTEM};
-use moshiki::tokenizer::Tokenizer;
+use moshiki::indexing::preliminary_index;
 
 #[global_allocator]
 pub static GLOBAL: &PeakMemAlloc<std::alloc::System> = &INSTRUMENTED_SYSTEM;
-
-fn test_tokenizer(lines: impl Iterator<Item = String>) -> u32 {
-    lines.map(|line| Tokenizer::new(&line).count() as u32).sum()
-}
 
 pub struct Dataset {
     pub name: String,
@@ -58,7 +54,7 @@ pub fn get_test_data() -> Vec<Dataset> {
         .collect()
 }
 
-fn bench_tokenizer() {
+fn bench_mini_index() {
     let inputs: Vec<Dataset> = get_test_data();
     let mut runner: BenchRunner = BenchRunner::new();
 
@@ -66,19 +62,19 @@ fn bench_tokenizer() {
         .add_plugin(CacheTrasher::default())
         .add_plugin(PeakMemAllocPlugin::new(GLOBAL));
 
-    for data in inputs.iter() {
+    for dataset in inputs.iter() {
         let mut group = runner.new_group();
-        group.set_name(&data.name);
-        let input_size = data.size();
-        group.set_input_size(input_size as usize);
-        group.register_with_input("tokenizer", data, move |data| {
-            let num_tokens = black_box(test_tokenizer(data.lines()));
-            num_tokens as u64
+        group.set_name(&dataset.name);
+        let input_size = dataset.size() as usize;
+        group.set_input_size(input_size);
+        group.register_with_input("mini index", dataset, move |dataset| {
+            let mini_index = black_box(preliminary_index(dataset.lines()));
+            mini_index.doc_groups.len() as u64
         });
         group.run();
     }
 }
 
 fn main() {
-    bench_tokenizer();
+    bench_mini_index();
 }
