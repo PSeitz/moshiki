@@ -4,6 +4,9 @@ use std::iter;
 pub trait TermStore {
     fn len(&self) -> usize;
     fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_>;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<T: TermStore + ?Sized> TermStore for &T {
