@@ -92,6 +92,7 @@ pub fn merge_templates(index: &mut PreliminaryIndex) {
 pub fn assign_template_ids(index: &mut PreliminaryIndex) {
     for (template_id, group) in index.doc_groups.values_mut().enumerate() {
         group.template.template_id = template_id as u32;
+        group.template.num_docs = group.num_docs;
     }
 }
 

@@ -1,47 +1,145 @@
-use std::io::{self, Read};
+use std::io::{self};
 use std::path::PathBuf;
 
 use fxhash::FxHashMap;
 
+use crate::columns::{Columns, decompress_column};
 use crate::dict::Dict;
-use crate::indexing::write_columns::get_template_path;
+use crate::templates::{MatchResult, Template, read_templates};
 
 pub struct Searcher {
     dictionary: Dict,
-    output_folder: PathBuf,
+    folder: PathBuf,
+    templates: Vec<Template>,
 }
 
 impl Searcher {
-    pub fn new(output_folder: &str) -> io::Result<Self> {
-        let dictionary = Dict::new(output_folder)?;
+    pub fn new(folder: &str) -> io::Result<Self> {
+        let dictionary = Dict::new(folder)?;
+        let folder = PathBuf::from(folder);
+        let templates = read_templates(&folder)?;
+        for (idx, template) in templates.iter().enumerate() {
+            assert_eq!(
+                idx, template.template_id as usize,
+                "Template ID mismatch at index {idx}",
+            );
+        }
         Ok(Searcher {
             dictionary,
-            output_folder: PathBuf::from(output_folder),
+            templates,
+            folder,
         })
     }
 
-    /// Search for terms in the dictionary and return a mapping of term IDs to template IDs.
-    /// The query is tokenized, and each token is looked up in the dictionary.
-    pub fn search(&self, query: &str) -> io::Result<FxHashMap<u32, Vec<u32>>> {
-        self.dictionary.search(query)
-    }
+    /// TODO: Only single term search is implemented.
+    ///
+    /// 1. Search for a term in the dictionary - this will return the term ID and associated
+    ///    template IDs.
+    /// 2. Check which of the templates match the term.
+    /// 3. Scan the zstd column files for the term ID to see if it exists in the template.
+    /// 4. If the term ID exists in the template, return all term IDs of the document.
+    /// 5. Use the term IDs with the template to reconstruct the documents.
+    ///
+    pub fn search(&self, query: &str) -> io::Result<Vec<String>> {
+        let term = query.as_bytes();
+        let search_result = self.dictionary.search_single_term(term)?;
 
-    /// Search for a singe term in the dictionary and return its term ID and associated template
-    /// IDs.
-    pub fn search_single_term(&self, term: &[u8]) -> io::Result<Option<(u32, Vec<u32>)>> {
-        self.dictionary.search_single_term(term)
-    }
+        let matching_template_ids: FxHashMap<u32, MatchResult> = self
+            .templates
+            .iter()
+            .filter_map(|template| {
+                let match_result = template.check_match(query);
+                match match_result {
+                    MatchResult::FullMatch | MatchResult::VariableMayMatch => {
+                        Some((template.template_id, match_result))
+                    }
+                    MatchResult::NoMatch => None,
+                }
+            })
+            .collect();
 
-    pub fn search_in_zstd_column(&self, term_id: u32, template_id: u32) -> io::Result<bool> {
-        let zstd_column_path = get_template_path(&self.output_folder, template_id);
-        let file = std::fs::File::open(zstd_column_path)?;
-        let mut decoder = zstd::Decoder::new(file)?;
-        let mut buffer = [0u8; 4];
-        while let Ok(()) = decoder.read_exact(&mut buffer) {
-            if u32::from_le_bytes(buffer) == term_id {
-                return Ok(true);
+        let mut matching_documents = Vec::new();
+
+        for template in self.templates.iter() {
+            let template_id = template.template_id;
+            // If the template matches, we can check if the term ID exists in the zstd column.
+            if let Some(match_result) = matching_template_ids.get(&template_id) {
+                match match_result {
+                    MatchResult::FullMatch => {
+                        // If the template fully matches, we don't need to check the zstd
+                        // column.
+                        let docs = self.search_in_zstd_column(|_| true, template_id, Some(10))?;
+                        matching_documents.push((template_id, docs));
+                        continue;
+                    }
+                    MatchResult::VariableMayMatch => {
+                        if let Some(ref search_result) = search_result
+                            && search_result.template_ids().contains(&template_id)
+                        {
+                            // Check if the term ID exists in the zstd column.
+                            let term_id = search_result.term_id();
+                            let docs = self.search_in_zstd_column(
+                                |hit| term_id == hit,
+                                template_id,
+                                Some(10),
+                            )?;
+                            matching_documents.push((template_id, docs));
+                        }
+                    }
+                    MatchResult::NoMatch => continue, // Skip this template
+                }
             }
         }
-        Ok(false)
+        // Retrieve the documents for the term ID and template IDs.
+        let mut documents = Vec::new();
+        for (template_id, doc_ids) in matching_documents {
+            for doc_terms in doc_ids {
+                let reconstructed = self.templates[template_id as usize]
+                    .reconstruct(&doc_terms, &self.dictionary)?;
+                documents.push(reconstructed);
+            }
+        }
+
+        Ok(documents)
+    }
+
+    pub fn search_in_zstd_column(
+        &self,
+        match_fn: impl Fn(u32) -> bool,
+        template_id: u32,
+        max_hits: Option<usize>,
+    ) -> io::Result<Vec<Vec<u32>>> {
+        // The number of variables with num_docs will used to retrieve the other terms
+        // of a document.
+        let num_docs = self.templates[template_id as usize].num_docs();
+        let columns: Columns = decompress_column(&self.folder, template_id, num_docs)?;
+
+        let mut documents_ids_hit = Vec::new();
+        for column in columns.iter_columns() {
+            for (doc_id, term_id) in column.iter().enumerate() {
+                if match_fn(term_id) {
+                    documents_ids_hit.push(doc_id as u32);
+                    if let Some(max) = max_hits {
+                        if documents_ids_hit.len() >= max {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if documents_ids_hit.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut all_documents = Vec::new();
+        // Now we have the document IDs that contain the term ID.
+        // We need to retrieve the other termids of the documents.
+        for doc_id in documents_ids_hit.iter() {
+            let document_terms = columns
+                .iter_columns()
+                .map(|col| col.term_at(*doc_id as usize).expect("Term ID not found"))
+                .collect::<Vec<u32>>();
+            all_documents.push(document_terms);
+        }
+        Ok(all_documents)
     }
 }

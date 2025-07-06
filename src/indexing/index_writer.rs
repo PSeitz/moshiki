@@ -7,10 +7,10 @@ use super::{
     patterns::{assign_template_ids, merge_templates},
     preliminary_index::preliminary_index,
     term_id_idx_to_template_ids,
-    write_columns::write_column,
     write_dict::write_dictionary_and_generate_mapping,
 };
 use crate::{
+    columns::write_column_and_remap,
     constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME},
     templates::write_templates,
 };
@@ -26,7 +26,11 @@ impl IndexWriter {
         }
     }
 
-    pub fn index(&self, lines: impl Iterator<Item = String>, _report: bool) -> io::Result<()> {
+    pub fn index<T: Into<String>>(
+        &self,
+        lines: impl Iterator<Item = T>,
+        _report: bool,
+    ) -> io::Result<()> {
         let mut preliminary_index = preliminary_index(lines);
         merge_templates(&mut preliminary_index);
         if std::env::var("STATS").is_ok() {
@@ -45,11 +49,10 @@ impl IndexWriter {
             &term_id_idx_catch_all,
         )?;
 
-        let templates_path = Path::new(&self.output_folder).join("templates.json");
-        write_templates(&preliminary_index, &templates_path)?;
+        write_templates(&preliminary_index, Path::new(&self.output_folder))?;
 
         for group in preliminary_index.doc_groups.values() {
-            write_column(
+            write_column_and_remap(
                 &self.output_folder,
                 group,
                 &old_to_new_id_map,

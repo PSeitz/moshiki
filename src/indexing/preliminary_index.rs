@@ -10,6 +10,7 @@ use super::{fingerprint, termmap::IndexingTermmap};
 #[derive(Debug, Clone, Default)]
 pub struct IndexingTemplate {
     pub template_id: u32,
+    pub num_docs: usize,
     pub tokens: Vec<TemplateTokenWithMeta>,
 }
 
@@ -294,6 +295,7 @@ impl PrelimDocGroup {
         Self {
             template: IndexingTemplate {
                 template_id: 0, // This will be set later
+                num_docs: 0,    // This will be set later
                 tokens: template_tokens,
             },
             columns: Vec::new(),
@@ -404,12 +406,13 @@ impl From<(TokenType, u32)> for CompositeToken {
     }
 }
 
-pub fn preliminary_index(lines: impl Iterator<Item = String>) -> PreliminaryIndex {
+pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> PreliminaryIndex {
     let mut term_hash_map = IndexingTermmap::default();
     let mut preliminary_docs = FxHashMap::default();
 
     let mut tokens = Vec::new();
     for line in lines {
+        let line: String = line.into();
         let tokenizer = Tokenizer::new(&line);
         tokens.extend(tokenizer);
         //if tokens.len() == 2319 {

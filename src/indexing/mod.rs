@@ -3,7 +3,6 @@ pub mod index_writer;
 pub mod patterns;
 pub mod preliminary_index;
 pub mod termmap;
-pub mod write_columns;
 pub mod write_dict;
 
 pub use fingerprint::fingerprint;

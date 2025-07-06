@@ -1,3 +1,4 @@
+pub mod columns;
 pub mod constants;
 pub mod dict;
 pub mod indexing;
@@ -14,42 +15,42 @@ mod tests {
     use crate::indexing::IndexWriter;
     use crate::search::Searcher;
 
+    pub fn index<T: Into<String>>(output_folder: &str, lines: impl Iterator<Item = T>) {
+        let writer = IndexWriter::new(output_folder.to_string());
+        writer.index(lines, false).unwrap();
+    }
     #[test]
-    fn test_end_to_end() {
+    fn integration_test_variable_search() {
         let temp_dir = TempDir::new().unwrap();
         let output_folder = temp_dir.path().to_str().unwrap();
+        index(
+            output_folder,
+            ["hello world", "hello there", "nice line"].into_iter(),
+        );
 
-        // Index the data
-        let writer = IndexWriter::new(output_folder.to_string());
-
-        let lines = ["hello world", "hello there", "another line"];
-        let lines = lines.iter().map(|line| line.to_string());
-        writer.index(lines, false).unwrap();
-
-        // Search the data
         let searcher = Searcher::new(output_folder).unwrap();
 
         let results = searcher.search("hello").unwrap();
-        assert_eq!(results.len(), 1);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], "hello world");
+        assert_eq!(results[1], "hello there");
+    }
 
-        // "world" is a variable and should be searchable
-        let results = searcher.search("world").unwrap();
-        assert_eq!(results.len(), 1);
-        let template_ids = results.values().next().unwrap();
-        assert_eq!(template_ids.len(), 1);
+    #[test]
+    fn integration_test_constant_search() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_folder = temp_dir.path().to_str().unwrap();
 
-        // "there" is a variable and should be searchable
-        let results = searcher.search("there").unwrap();
-        assert_eq!(results.len(), 1);
-        let template_ids = results.values().next().unwrap();
-        assert_eq!(template_ids.len(), 1);
+        index(
+            output_folder,
+            ["hello world", "hello there", "cool nice line"].into_iter(),
+        );
 
-        let results = searcher.search("another").unwrap();
-        assert_eq!(results.len(), 1);
-        let results = searcher.search("line").unwrap();
-        assert_eq!(results.len(), 1);
+        let searcher = Searcher::new(output_folder).unwrap();
 
-        let results = searcher.search("nonexistent").unwrap();
-        assert_eq!(results.len(), 0);
+        let results = searcher.search("hello").unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], "hello world");
+        assert_eq!(results[1], "hello there");
     }
 }

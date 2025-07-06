@@ -12,6 +12,20 @@ pub struct Dict {
     dictionary: tantivy_sstable::Dictionary<VecU32ValueSSTable>,
 }
 
+pub struct SearchResult {
+    term_id: u32,
+    template_ids: Vec<u32>,
+}
+impl SearchResult {
+    pub fn term_id(&self) -> u32 {
+        self.term_id
+    }
+
+    pub fn template_ids(&self) -> &[u32] {
+        &self.template_ids
+    }
+}
+
 impl Dict {
     pub fn new(output_folder: &str) -> io::Result<Self> {
         let dictionary_path = Path::new(output_folder).join(DICTIONARY_NAME);
@@ -26,11 +40,11 @@ impl Dict {
         let mut term_ids_to_template_ids: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
         for token in tokenize(query) {
             if let Some(term) = token.as_bytes(query) {
-                if let Ok(Some((term_ord, template_ids))) = self.search_single_term(term) {
+                if let Ok(Some(search_result)) = self.search_single_term(term) {
                     term_ids_to_template_ids
-                        .entry(term_ord)
+                        .entry(search_result.term_id())
                         .or_default()
-                        .extend(template_ids);
+                        .extend(search_result.template_ids());
                 }
             }
         }
@@ -38,12 +52,17 @@ impl Dict {
     }
     /// Search for a singe term in the dictionary and return its term ID and associated template
     /// IDs.
-    pub fn search_single_term(&self, term: &[u8]) -> io::Result<Option<(u32, Vec<u32>)>> {
+    pub fn search_single_term(&self, term: &[u8]) -> io::Result<Option<SearchResult>> {
         if let Ok(Some(term_ord)) = self.dictionary.term_ord(term) {
             return Ok(self
                 .dictionary
                 .term_info_from_ord(term_ord)?
-                .map(|template_ids| Some((term_ord as u32, template_ids)))
+                .map(|template_ids| {
+                    Some(SearchResult {
+                        term_id: term_ord as u32,
+                        template_ids,
+                    })
+                })
                 .expect("Term info should be present"));
         }
         Ok(None)

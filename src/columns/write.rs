@@ -1,13 +1,14 @@
-use super::PrelimDocGroup;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-pub fn get_template_path(folder: &Path, template_id: u32) -> PathBuf {
-    folder.join(format!("template_{template_id}.zst",))
-}
+use crate::indexing::PrelimDocGroup;
 
-pub fn write_column(
+use super::get_template_path;
+
+/// The columns are flattened as [Column1Term1, Column1Term2, ..., Column2Term1, ...]
+/// Each column has the same number of terms
+pub fn write_column_and_remap(
     folder: &Path,
     group: &PrelimDocGroup,
     old_to_new_id_map: &[u32],
