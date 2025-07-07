@@ -8,6 +8,11 @@ use moshiki::constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME};
 use moshiki::indexing::IndexWriter;
 use moshiki::search::Searcher;
 
+use tikv_jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 struct Report {
     file_name: String,
     throughput: f64,
