@@ -5,7 +5,7 @@ use fxhash::FxHashMap;
 
 use crate::columns::{Columns, decompress_column};
 use crate::dict::{Dict, SearchResult};
-use crate::templates::{MatchResult, Template, read_templates};
+use crate::templates::{MatchResult, TemplateWithMeta, read_templates};
 use crate::{Doc, TemplateId};
 
 pub struct Searcher {
@@ -14,14 +14,14 @@ pub struct Searcher {
     templates: Templates,
 }
 pub struct Templates {
-    templates: Vec<Template>,
+    templates: Vec<TemplateWithMeta>,
 }
 impl Templates {
-    pub fn get_template(&self, template_id: TemplateId) -> &Template {
+    pub fn get_template(&self, template_id: TemplateId) -> &TemplateWithMeta {
         &self.templates[template_id.0 as usize]
     }
 
-    fn iter(&self) -> impl Iterator<Item = &Template> {
+    fn iter(&self) -> impl Iterator<Item = &TemplateWithMeta> {
         self.templates.iter()
     }
 }
@@ -52,6 +52,7 @@ impl Searcher {
             let reconstructed = self
                 .templates
                 .get_template(doc.template_id)
+                .template
                 .reconstruct(&doc.term_ids, &self.dictionary)?;
             documents.push(reconstructed);
         }
@@ -72,7 +73,7 @@ impl Searcher {
             .templates
             .iter()
             .filter_map(|template| {
-                let match_result = template.check_match(query);
+                let match_result = template.template.check_match(query);
                 match match_result {
                     MatchResult::FullMatch | MatchResult::VariableMayMatch => {
                         Some((template.template_id, match_result))

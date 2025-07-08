@@ -5,9 +5,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::TemplateId;
-use crate::constants::TEMPLATE_FILE_NAME;
+use crate::constants::{TEMPLATE_DEBUG_FILE_NAME, TEMPLATE_FILE_NAME};
 use crate::dict::Dict;
-use crate::indexing::{self, IndexingTemplate, PreliminaryIndex, TemplateTokenWithMeta};
+use crate::indexing::{self, IndexingTemplate, IndexingTemplateToken, PreliminaryIndex};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum MatchResult {
@@ -17,12 +17,44 @@ pub enum MatchResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct Template {
+pub struct TemplateWithMeta {
     pub num_docs: usize,
     pub template_id: TemplateId,
-    pub parts: Vec<TemplateToken>,
+    pub template: Template,
 }
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct Template {
+    pub(crate) parts: Vec<TemplateToken>,
+}
+
+impl TemplateWithMeta {
+    pub(crate) fn num_docs(&self) -> usize {
+        self.num_docs
+    }
+}
+
 impl Template {
+    /// Serialize this template to a readable String.
+    pub fn ser_readable(&self) -> String {
+        let mut out = String::new();
+        for token in &self.parts {
+            match token {
+                TemplateToken::Constant(bytes) => {
+                    out.push_str(std::str::from_utf8(bytes).unwrap());
+                }
+                TemplateToken::Variable => {
+                    out.push('?');
+                }
+                TemplateToken::Whitespace(n) => {
+                    for _ in 0..*n {
+                        out.push(' ');
+                    }
+                }
+            }
+        }
+        out
+    }
     pub fn reconstruct(&self, term_ids: &[u32], dict: &Dict) -> io::Result<String> {
         let mut reconstructed = String::new();
         let mut term_id_idx = 0;
@@ -59,17 +91,19 @@ impl Template {
         }
         match_result
     }
-
-    pub(crate) fn num_docs(&self) -> usize {
-        self.num_docs
-    }
 }
-impl From<&IndexingTemplate> for Template {
+impl From<&IndexingTemplate> for TemplateWithMeta {
     fn from(template: &IndexingTemplate) -> Self {
-        Template {
+        TemplateWithMeta {
             num_docs: template.num_docs,
             template_id: template.template_id,
-            parts: template.tokens.iter().map(TemplateToken::from).collect(),
+            template: Template {
+                parts: template
+                    .tokens
+                    .iter()
+                    .map(|tok| TemplateToken::from(&tok.token))
+                    .collect(),
+            },
         }
     }
 }
@@ -101,30 +135,40 @@ impl TemplateToken {
         }
     }
 }
-impl From<&TemplateTokenWithMeta> for TemplateToken {
-    fn from(token_with_meta: &TemplateTokenWithMeta) -> Self {
-        match token_with_meta.token {
-            indexing::IndexingTemplateToken::Constant(ref const_token) => {
+impl From<&IndexingTemplateToken> for TemplateToken {
+    fn from(token: &IndexingTemplateToken) -> Self {
+        match token {
+            indexing::IndexingTemplateToken::Constant(const_token) => {
                 TemplateToken::Constant(const_token.text.to_vec())
             }
             indexing::IndexingTemplateToken::Variable { .. } => TemplateToken::Variable,
-            indexing::IndexingTemplateToken::Whitespace(id) => TemplateToken::Whitespace(id),
+            indexing::IndexingTemplateToken::Whitespace(id) => TemplateToken::Whitespace(*id),
         }
     }
 }
 
 pub fn write_templates(index: &PreliminaryIndex, folder: &Path) -> io::Result<()> {
     let path = folder.join(TEMPLATE_FILE_NAME);
-    let file = File::create(path)?;
-    let mut writer = BufWriter::new(file);
-    let templates_only: Vec<Template> = index.iter_templates().map(Template::from).collect();
+    let mut writer = BufWriter::new(File::create(path)?);
+    let templates_only: Vec<TemplateWithMeta> =
+        index.iter_templates().map(TemplateWithMeta::from).collect();
     let bytes: Vec<u8> = postcard::to_allocvec(&templates_only).map_err(io::Error::other)?;
     writer.write_all(&bytes)?;
     writer.flush()?;
 
+    if std::env::var("DEBUG_TEMPLATES").is_ok() {
+        let path = folder.join(TEMPLATE_DEBUG_FILE_NAME);
+        let mut writer = BufWriter::new(File::create(path)?);
+        for template in index.iter_templates() {
+            let template = TemplateWithMeta::from(template);
+            let template = template.template;
+            writer.write_all(template.ser_readable().as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+    }
     Ok(())
 }
-pub fn read_templates(folder: &Path) -> io::Result<Vec<Template>> {
+pub fn read_templates(folder: &Path) -> io::Result<Vec<TemplateWithMeta>> {
     let path = folder.join(TEMPLATE_FILE_NAME);
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);

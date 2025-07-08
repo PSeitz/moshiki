@@ -86,35 +86,16 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 }
 
 pub fn reconstruct_from_tokens(input: &str, tokens: impl Iterator<Item = Token>) -> String {
-    tokens
-        .map(|t| match t {
-            Token::IPv4(r)
-            | Token::Uuid(r)
-            | Token::Word(r)
-            | Token::CatchAll(r)
-            | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
-            Token::Whitespace(s) => " ".repeat(s as usize),
-            Token::Number(r) => r.to_string(input),
-        })
-        .collect()
+    tokens.map(|t| t.to_string(input)).collect()
 }
 
 pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec<String> {
-    tokens
-        .map(|t| match t {
-            Token::IPv4(r)
-            | Token::Uuid(r)
-            | Token::Word(r)
-            | Token::CatchAll(r)
-            | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
-            Token::Whitespace(s) => " ".repeat(s as usize),
-            Token::Number(r) => r.to_string(input),
-        })
-        .collect()
+    tokens.map(|t| t.to_string(input)).collect()
 }
 
-/// Zero-allocation tokenizer: splits on whitespace and ASCII punctuation
-/// (excluding '.', '-', and '_' so tokens like IPs, hyphenated IDs, and snake_case stay intact)
+/// Zero-allocation tokenizer.
+///
+/// The Tokenizer implements `Iterator` and can be used to tokenize a string into `Token` objects.
 pub struct Tokenizer<'a> {
     input: &'a str,
     pos: u32,
@@ -122,6 +103,10 @@ pub struct Tokenizer<'a> {
 }
 
 impl<'a> Tokenizer<'a> {
+    pub fn tokenize(input: &'a str) -> Vec<String> {
+        Tokenizer::new(input).map(|t| t.to_string(input)).collect()
+    }
+
     #[inline]
     pub fn new(input: &'a str) -> Self {
         Tokenizer {
