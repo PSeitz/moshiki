@@ -14,6 +14,26 @@ pub fn write_column_and_remap(
     old_to_new_id_map: &[u32],
     old_catch_all_to_new_id_map: &[u32],
 ) -> std::io::Result<()> {
+    //let mut byte_buffer = Vec::new();
+    //for (is_catch_all, term_id) in group.iter_columns() {
+    //let mut num_buffer = Vec::new();
+    //for term_id in term_id {
+    //// Convert the term ID to the new ID using the mapping
+    //let new_term_id = if is_catch_all {
+    //&old_catch_all_to_new_id_map[*term_id as usize]
+    //} else {
+    //&old_to_new_id_map[*term_id as usize]
+    //};
+    //// Append the new term ID to the byte buffer
+    //num_buffer.push(*new_term_id);
+    //}
+    //if !num_buffer.is_empty() {
+    //let compressed_data: Vec<u8> =
+    //q_compress::auto_compress(&num_buffer, q_compress::DEFAULT_COMPRESSION_LEVEL);
+    //byte_buffer.extend_from_slice(&compressed_data);
+    //}
+    //}
+
     let mut byte_buffer = Vec::new();
     for (is_catch_all, term_id) in group.iter_columns() {
         for term_id in term_id {
@@ -29,6 +49,7 @@ pub fn write_column_and_remap(
     }
 
     let compressed_data = zstd::stream::encode_all(&*byte_buffer, 6).unwrap();
+
     let file_path = get_template_path(folder, group.template.template_id);
     let mut file = File::create(file_path).unwrap();
     file.write_all(&compressed_data).unwrap();

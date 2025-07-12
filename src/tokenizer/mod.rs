@@ -9,7 +9,7 @@ pub use number::*;
 pub use number_as_string::*;
 pub use token::*;
 
-const MAX_TOKENS: usize = 100;
+const MAX_TOKENS: usize = 100000;
 
 const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
     let mut lookup = [false; 256];

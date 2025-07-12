@@ -443,13 +443,19 @@ pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> Pre
     let mut preliminary_docs = FxHashMap::default();
 
     let mut tokens = Vec::new();
+    //let mut num = 0;
     for line in lines {
+        //num += 1;
         let line: String = line.into();
         let tokenizer = Tokenizer::new(&line);
         tokens.extend(tokenizer);
-        //if tokens.len() == 2319 {
-        //println!("Line: {}", line);
-        //println!("{:?}", tokens_as_string(&line, tokens.iter().cloned()));
+        //if tokens.len() == 1 {
+        //println!("num: {num}");
+        //println!("Line: {:?}", line);
+        //println!(
+        //"{:?}",
+        //crate::tokenizer::tokens_as_string(&line, tokens.iter().cloned())
+        //);
         //}
         let fingerprint = fingerprint(&tokens);
 

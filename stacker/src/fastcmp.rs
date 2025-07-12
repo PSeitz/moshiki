@@ -68,8 +68,29 @@ fn short_compare(left: &[u8], right: &[u8]) -> bool {
 }
 
 #[inline(always)]
-fn double_check_trick<const SIZE: usize>(left: &[u8], right: &[u8]) -> bool {
-    left[0..SIZE] == right[0..SIZE] && left[left.len() - SIZE..] == right[right.len() - SIZE..]
+unsafe fn load<T: Copy>(p: *const u8) -> T {
+    unsafe { std::ptr::read_unaligned(p as *const T) }
+}
+
+#[inline(always)]
+fn double_check_trick<const SZ: usize>(l: &[u8], r: &[u8]) -> bool {
+    // pick the widest integer we can legally load
+    if SZ == 8 {
+        unsafe {
+            load::<u64>(l.as_ptr()) == load::<u64>(r.as_ptr())
+                && load::<u64>(l.as_ptr().add(l.len() - 8))
+                    == load::<u64>(r.as_ptr().add(r.len() - 8))
+        }
+    } else if SZ == 4 {
+        unsafe {
+            load::<u32>(l.as_ptr()) == load::<u32>(r.as_ptr())
+                && load::<u32>(l.as_ptr().add(l.len() - 4))
+                    == load::<u32>(r.as_ptr().add(r.len() - 4))
+        }
+    } else {
+        // fall back to your original slice compare
+        l[..SZ] == r[..SZ] && l[l.len() - SZ..] == r[r.len() - SZ..]
+    }
 }
 
 #[cfg(test)]
