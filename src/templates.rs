@@ -142,6 +142,7 @@ impl From<&IndexingTemplateToken> for TemplateToken {
                 TemplateToken::Constant(const_token.text.to_vec())
             }
             indexing::IndexingTemplateToken::Variable { .. } => TemplateToken::Variable,
+            #[cfg(feature = "whitespace")]
             indexing::IndexingTemplateToken::Whitespace(id) => TemplateToken::Whitespace(*id),
         }
     }

@@ -37,6 +37,10 @@ default = ["number_as_string"]
 number_as_string = []
 # Slightly Lower performance and compression
 match_composite_id = []
+# Use partitioned vec instead of hashmap
+doc_groups_vec = []
+# Special whitespace handling
+whitespace = []
 
 # debug in bench profile
 [profile.bench]

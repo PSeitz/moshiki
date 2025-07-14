@@ -11,8 +11,28 @@ pub enum Token {
     Uuid(Range<u32>),
     Word(Range<u32>),
     Punctuation(Range<u32>),
+    #[cfg(feature = "whitespace")]
     Whitespace(u32),
     CatchAll(Range<u32>),
+}
+
+impl Token {
+    /// Compares with another token to see if they are the same type, but NOT range.
+    /// Whitespace tokens are only considered equal if they have the same number of spaces.
+    #[inline]
+    pub fn matches(&self, other: &Token) -> bool {
+        match (self, other) {
+            (Token::Word(_), Token::Word(_)) => true,
+            (Token::Number(_), Token::Number(_)) => true,
+            (Token::IPv4(_), Token::IPv4(_)) => true,
+            (Token::Uuid(_), Token::Uuid(_)) => true,
+            (Token::Punctuation(_), Token::Punctuation(_)) => true,
+            #[cfg(feature = "whitespace")]
+            (Token::Whitespace(num1), Token::Whitespace(num2)) => num1 == num2,
+            (Token::CatchAll(_), Token::CatchAll(_)) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
@@ -23,6 +43,7 @@ pub enum TokenType {
     IPv4 = 3,
     Uuid = 4,
     Punctuation = 5,
+    #[cfg(feature = "whitespace")]
     Whitespace = 6,
     CatchAll = 7,
 }
@@ -31,6 +52,7 @@ impl TokenType {
     pub fn is_catch_all(&self) -> bool {
         *self == TokenType::CatchAll
     }
+    #[cfg(feature = "whitespace")]
     pub fn is_whitespace(&self) -> bool {
         *self == TokenType::Whitespace
     }
@@ -45,6 +67,7 @@ impl From<u8> for TokenType {
             3 => TokenType::IPv4,
             4 => TokenType::Uuid,
             5 => TokenType::Punctuation,
+            #[cfg(feature = "whitespace")]
             6 => TokenType::Whitespace,
             7 => TokenType::CatchAll,
             _ => panic!("Invalid token type"),
@@ -54,9 +77,9 @@ impl From<u8> for TokenType {
 
 /// Retrun an ID for each token type
 impl Token {
-    #[inline]
     /// They start from 1, so we can use them for the fingerprint and differentiate from
     /// doesn't exist token type (0).
+    #[inline]
     pub fn token_type(&self) -> TokenType {
         match self {
             Token::Word(_) => TokenType::Word,
@@ -64,6 +87,7 @@ impl Token {
             Token::IPv4(_) => TokenType::IPv4,
             Token::Uuid(_) => TokenType::Uuid,
             Token::Punctuation(_) => TokenType::Punctuation,
+            #[cfg(feature = "whitespace")]
             Token::Whitespace(_) => TokenType::Whitespace,
             Token::CatchAll(_) => TokenType::CatchAll,
         }
@@ -81,6 +105,7 @@ impl Token {
             | Token::Uuid(r)
             | Token::CatchAll(r)
             | Token::Punctuation(r) => input[r.start as usize..r.end as usize].to_string(),
+            #[cfg(feature = "whitespace")]
             Token::Whitespace(num) => " ".repeat(*num as usize),
             Token::Number(num) => num.to_string(input),
         }
@@ -96,11 +121,13 @@ impl Token {
             | Token::Punctuation(r) => Some(&input.as_bytes()[r.start as usize..r.end as usize]),
             Token::Number(n) => Some(n.as_bytes(input)),
             // White is ignored for now
+            #[cfg(feature = "whitespace")]
             Token::Whitespace(_) => None,
         }
     }
 
     #[allow(dead_code)]
+    #[cfg(feature = "whitespace")]
     pub(crate) fn is_whitespace(&self) -> bool {
         matches!(self, Token::Whitespace(_))
     }

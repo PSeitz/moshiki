@@ -56,6 +56,11 @@ pub fn write_dictionary_and_generate_mapping(
         if template_ids.len() > 1 {
             template_ids.sort_unstable();
         }
+        if template_ids.is_empty() {
+            // If there are no template IDs, we can skip inserting this term.
+            // This can happen if the term is only in a constant
+            continue;
+        }
 
         builder.insert(term_bytes, &template_ids)?;
         template_ids.clear();

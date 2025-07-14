@@ -13,6 +13,7 @@ pub struct Dict {
     dictionary: tantivy_sstable::Dictionary<VecU32ValueSSTable>,
 }
 
+#[derive(Debug, Clone)]
 pub struct SearchResult {
     term_id: u32,
     template_ids: Vec<TemplateId>,

@@ -3,10 +3,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::TemplateId;
 use crate::indexing::termmap::TermStore;
+use crate::indexing::{DocGroups, GroupId};
 use crate::tokenizer::{Token, TokenType, Tokenizer};
 use stacker::fastcmp::fast_short_slice_compare;
 
-use super::{fingerprint, termmap::IndexingTermmap};
+use super::termmap::IndexingTermmap;
 
 #[derive(Debug, Clone, Default)]
 pub struct IndexingTemplate {
@@ -30,13 +31,14 @@ pub enum IndexingTemplateToken {
         column_index: usize,
         token_type: TokenType,
     },
+    #[cfg(feature = "whitespace")]
     Whitespace(u32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConstTemplateToken {
     pub composite_token: CompositeToken,
-    // u64 LE bytes for numbers
+    // u64 LE bytes for numbers (with feature_flag `number_as_string`)
     // String for words
     pub text: Vec<u8>,
 }
@@ -65,6 +67,7 @@ impl IndexingTemplateToken {
         match self {
             IndexingTemplateToken::Constant(_) => false,
             IndexingTemplateToken::Variable { .. } => true,
+            #[cfg(feature = "whitespace")]
             IndexingTemplateToken::Whitespace(_) => false,
         }
     }
@@ -72,6 +75,7 @@ impl IndexingTemplateToken {
         match self {
             IndexingTemplateToken::Constant(ct) => ct.composite_token.token_type(),
             IndexingTemplateToken::Variable { token_type, .. } => *token_type,
+            #[cfg(feature = "whitespace")]
             IndexingTemplateToken::Whitespace(_) => TokenType::Whitespace,
         }
     }
@@ -79,7 +83,7 @@ impl IndexingTemplateToken {
 
 pub struct PreliminaryIndex {
     pub term_hash_map: IndexingTermmap,
-    pub doc_groups: FxHashMap<u64, PrelimDocGroup>,
+    pub doc_groups: DocGroups,
 }
 impl PreliminaryIndex {
     pub fn iter_templates(&self) -> impl Iterator<Item = &IndexingTemplate> {
@@ -107,7 +111,7 @@ impl PreliminaryIndex {
             println!("Num Tokens: {length}, Num Templates: {count} Num Docs: {num_docs}");
         }
 
-        println!("Total Number of Groups: {}", self.doc_groups.len());
+        println!("Total Number of Groups: {}", self.doc_groups.num_groups());
 
         // Dictionary stats
         // Avg length of terms
@@ -146,6 +150,7 @@ impl PreliminaryIndex {
                             num_like += 1;
                         }
                     }
+                    #[cfg(feature = "whitespace")]
                     IndexingTemplateToken::Whitespace(_) => {}
                 }
             }
@@ -190,6 +195,7 @@ fn get_term_id(
             let term_slice = &line.as_bytes()[v.start as usize..v.end as usize];
             term_hash_map.mutate_or_create(term_slice, is_id_like, token_type.is_catch_all())
         }
+        #[cfg(feature = "whitespace")]
         Token::Whitespace(num_whitespace) => *num_whitespace,
         Token::Number(number) => term_hash_map.mutate_or_create(
             number.as_bytes(line),
@@ -202,25 +208,14 @@ fn get_term_id(
 #[derive(Debug, Clone)]
 pub struct PrelimDocGroup {
     pub template: IndexingTemplate,
+    /// Tokens of the first document in this group. We use it to compare token types
+    //pub tokens: Vec<Token>,
+    pub group_id: GroupId,
     pub columns: Vec<Vec<u32>>,
     pub num_docs: usize,
 }
 
 impl PrelimDocGroup {
-    pub fn for_each_mut_column<F>(&mut self, mut cb: F)
-    where
-        F: FnMut(bool, &mut [u32]),
-    {
-        // We can borrow `self.columns` mutably up front, and only borrow `self.template.tokens` immutably, so these borrows don’t conflict.
-        let columns = &mut self.columns;
-        for template_token in &self.template.tokens {
-            if let IndexingTemplateToken::Variable { column_index, .. } = template_token.token {
-                let catch_all = template_token.token.token_type().is_catch_all();
-                let slice = &mut columns[column_index][..];
-                cb(catch_all, slice);
-            }
-        }
-    }
     /// Return an iterator over the columns, yielding a tuple of (is_catch_all, &[u32])
     pub fn iter_columns(&self) -> impl Iterator<Item = (bool, &[u32])> {
         self.template.tokens.iter().flat_map(|template_token| {
@@ -260,7 +255,7 @@ impl PrelimDocGroup {
             }
         }
     }
-    pub fn convert_to_variable(&mut self, token_idx: usize, term_hash_map: &mut IndexingTermmap) {
+    pub fn convert_to_variable(&mut self, token_idx: usize, _term_hash_map: &mut IndexingTermmap) {
         // Convert the token at token_idx to a variable
         let template_token = &mut self.template.tokens[token_idx];
         match &mut template_token.token {
@@ -274,9 +269,10 @@ impl PrelimDocGroup {
                     existing_ct.composite_token.token_type(),
                 );
             }
+            #[cfg(feature = "whitespace")]
             IndexingTemplateToken::Whitespace(num) => {
                 let white_space = " ".repeat(*num as usize);
-                let term_id = term_hash_map.mutate_or_create(white_space.as_bytes(), false, false);
+                let term_id = _term_hash_map.mutate_or_create(white_space.as_bytes(), false, false);
                 // This position is now variable
                 let column_index = self.columns.len();
                 let new_column = vec![term_id; self.num_docs];
@@ -289,7 +285,12 @@ impl PrelimDocGroup {
     }
 
     #[cold]
-    pub fn new(tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) -> Self {
+    pub fn new(
+        id: GroupId,
+        tokens: &[Token],
+        line: &str,
+        term_hash_map: &mut IndexingTermmap,
+    ) -> Self {
         let template_tokens = tokens
             .iter()
             .enumerate()
@@ -312,6 +313,7 @@ impl PrelimDocGroup {
                         token_index: token_pos as u32,
                     }
                 }
+                #[cfg(feature = "whitespace")]
                 Token::Whitespace(num) => TemplateTokenWithMeta {
                     token: IndexingTemplateToken::Whitespace(*num),
                     token_index: token_pos as u32,
@@ -326,12 +328,19 @@ impl PrelimDocGroup {
                 tokens: template_tokens,
             },
             columns: Vec::new(),
-            num_docs: 0,
+            num_docs: 1,
+            group_id: id,
+            //tokens: tokens.to_vec(),
         }
     }
 
     #[inline]
-    fn push(&mut self, tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) {
+    pub(crate) fn push(
+        &mut self,
+        tokens: &[Token],
+        line: &str,
+        term_hash_map: &mut IndexingTermmap,
+    ) {
         // Compare with template and update if necessary
         // TODO: fast path here to quickly hashcheck all the constants after e.g. 1000 documents
         for template_token in &mut self.template.tokens {
@@ -365,6 +374,7 @@ impl PrelimDocGroup {
                         *is_id_like = check_is_id_like(&self.columns[*column_index]);
                     }
                 }
+                #[cfg(feature = "whitespace")]
                 IndexingTemplateToken::Whitespace(_) => {
                     // Whitespace is constant within a group
                 }
@@ -372,6 +382,22 @@ impl PrelimDocGroup {
         }
         self.num_docs += 1;
     }
+
+    //pub(crate) fn matches_token_types(&self, tokens: &[Token]) -> bool {
+    //assert_eq!(
+    //self.template.tokens.len(),
+    //tokens.len(),
+    //"Token length mismatch: {} != {}",
+    //self.template.tokens.len(),
+    //tokens.len()
+    //);
+    //for (template_token, token) in self.tokens.iter().zip(tokens) {
+    //if !template_token.matches(token) {
+    //return false;
+    //}
+    //}
+    //true
+    //}
 }
 
 /// TODO: The check could be done on a bitvec, since we probably have very few term IDs
@@ -440,7 +466,7 @@ impl From<(TokenType, u32)> for CompositeToken {
 
 pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> PreliminaryIndex {
     let mut term_hash_map = IndexingTermmap::default();
-    let mut preliminary_docs = FxHashMap::default();
+    let mut preliminary_docs = DocGroups::default();
 
     let mut tokens = Vec::new();
     //let mut num = 0;
@@ -457,12 +483,12 @@ pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> Pre
         //crate::tokenizer::tokens_as_string(&line, tokens.iter().cloned())
         //);
         //}
-        let fingerprint = fingerprint(&tokens);
+        //let fingerprint = fingerprint(&tokens);
 
-        let group = preliminary_docs
-            .entry(fingerprint)
-            .or_insert_with(|| PrelimDocGroup::new(&tokens, &line, &mut term_hash_map));
-        group.push(&tokens, &line, &mut term_hash_map);
+        preliminary_docs.insert(&tokens, &line, &mut term_hash_map);
+        //.entry(fingerprint)
+        //.or_insert_with(|| PrelimDocGroup::new(&tokens, &line, &mut term_hash_map));
+        //group.push(&tokens, &line, &mut term_hash_map);
         tokens.clear();
     }
 
@@ -522,13 +548,11 @@ impl SingleOrHashSet {
 pub fn term_id_idx_to_template_ids(
     prelim_index: &PreliminaryIndex,
 ) -> (Vec<SingleOrHashSet>, Vec<SingleOrHashSet>) {
-    // TODO: BUG template_id is not known here yet (correct now, but probably not in the future)
     let mut catch_all_term_id_to_templates: Vec<SingleOrHashSet> =
         vec![SingleOrHashSet::default(); prelim_index.term_hash_map.catch_all.len()];
     let mut term_id_to_templates: Vec<SingleOrHashSet> =
         vec![SingleOrHashSet::default(); prelim_index.term_hash_map.regular.len()];
 
-    // TODO: BUG template_id is not known here yet (correct now, but not in the future)
     for (template_id, group) in prelim_index.doc_groups.values().enumerate() {
         for (is_catch_all, column) in group.iter_columns() {
             if is_catch_all {

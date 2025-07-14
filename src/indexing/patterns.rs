@@ -1,6 +1,6 @@
 use fxhash::FxHashMap;
 
-use crate::indexing::{IndexingTemplateToken, PrelimDocGroup, PreliminaryIndex};
+use crate::indexing::{GroupId, IndexingTemplateToken, PrelimDocGroup, PreliminaryIndex};
 
 type TermIdMap<'a> = Vec<&'a [u8]>;
 
@@ -12,6 +12,7 @@ enum MergeableTokenGroup {
     // Can always be merged currently
     Variable,
     // Can merge if the number of whitespace tokens matches
+    #[cfg(feature = "whitespace")]
     Whitespace(u32),
     // Catch all can only be merged with other catch alls
     CatchAll,
@@ -34,6 +35,7 @@ impl MergeableTokenGroup {
                     MergeableTokenGroup::Variable
                 }
             }
+            #[cfg(feature = "whitespace")]
             IndexingTemplateToken::Whitespace(num) => {
                 if num_docs < 100 {
                     MergeableTokenGroup::Variable
@@ -46,9 +48,9 @@ impl MergeableTokenGroup {
 }
 
 pub fn merge_templates(index: &mut PreliminaryIndex) {
-    let mut token_group_to_fingerprints: FxHashMap<Vec<MergeableTokenGroup>, Vec<u64>> =
+    let mut token_group_to_fingerprints: FxHashMap<Vec<MergeableTokenGroup>, Vec<GroupId>> =
         FxHashMap::default();
-    for (pos, group) in &index.doc_groups {
+    for (group_id, group) in index.doc_groups.iter() {
         let mergeable_token_types: Vec<MergeableTokenGroup> = group
             .template
             .tokens
@@ -57,8 +59,8 @@ pub fn merge_templates(index: &mut PreliminaryIndex) {
             .collect();
         token_group_to_fingerprints
             .entry(mergeable_token_types)
-            .and_modify(|e| e.push(*pos))
-            .or_insert(vec![*pos]);
+            .and_modify(|e| e.push(group_id))
+            .or_insert(vec![group_id]);
     }
 
     // For each group, we will group them by their token types
@@ -71,7 +73,7 @@ pub fn merge_templates(index: &mut PreliminaryIndex) {
             if let MergeableTokenGroup::Variable = token_group_type {
                 // Iterate over the indices and convert the constant tokens to variable tokens
                 for &idx in &fingerprints {
-                    let group = &mut index.doc_groups.get_mut(&idx).unwrap();
+                    let group = &mut index.doc_groups.get_mut(idx).unwrap();
                     // Convert the constant token at the current index to a variable token
                     group.convert_to_variable(token_idx, &mut index.term_hash_map);
                 }
@@ -79,13 +81,13 @@ pub fn merge_templates(index: &mut PreliminaryIndex) {
         }
 
         // append all to the first group,
-        let mut first_group = index.doc_groups.remove(&fingerprints[0]).unwrap();
+        let mut first_group = index.doc_groups.remove(fingerprints[0]).unwrap();
         for &idx in &fingerprints[1..] {
-            first_group.append(index.doc_groups.get(&idx).unwrap());
-            index.doc_groups.remove(&idx);
+            first_group.append(index.doc_groups.get(idx).unwrap());
+            index.doc_groups.remove(idx);
         }
         // Insert the merged group back into the index
-        index.doc_groups.insert(fingerprints[0], first_group);
+        index.doc_groups.insert_group(first_group);
     }
 }
 
