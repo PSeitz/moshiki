@@ -41,6 +41,9 @@ match_composite_id = []
 doc_groups_vec = []
 # Special whitespace handling
 whitespace = []
+# Token limit after which we put the texts into a seperate dictionary
+token_limit = []
+
 
 # debug in bench profile
 [profile.bench]

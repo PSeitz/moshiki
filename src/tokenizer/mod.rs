@@ -9,6 +9,7 @@ pub use number::*;
 pub use number_as_string::*;
 pub use token::*;
 
+#[cfg(feature = "token_limit")]
 const MAX_TOKENS: usize = 100000;
 
 const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
@@ -142,6 +143,7 @@ impl<'a> Iterator for Tokenizer<'a> {
         }
 
         // too many tokens → catch-all
+        #[cfg(feature = "token_limit")]
         if self.token_count >= MAX_TOKENS {
             let start = self.pos;
             self.pos = self.input.len() as u32;
@@ -381,6 +383,7 @@ fn word_len(bytes: &[u8]) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -634,6 +637,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "token_limit")]
     fn test_max_tokens() {
         if MAX_TOKENS != 100 {
             return; // This test is only valid if MAX_TOKENS is set to 100

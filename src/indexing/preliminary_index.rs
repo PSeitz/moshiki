@@ -187,13 +187,14 @@ fn get_term_id(
 ) -> u32 {
     let token_type = token.token_type();
     match token {
-        Token::IPv4(v)
-        | Token::Uuid(v)
-        | Token::Word(v)
-        | Token::CatchAll(v)
-        | Token::Punctuation(v) => {
+        Token::IPv4(v) | Token::Uuid(v) | Token::Word(v) | Token::Punctuation(v) => {
             let term_slice = &line.as_bytes()[v.start as usize..v.end as usize];
-            term_hash_map.mutate_or_create(term_slice, is_id_like, token_type.is_catch_all())
+            term_hash_map.mutate_or_create(term_slice, is_id_like, false)
+        }
+        #[cfg(feature = "token_limit")]
+        Token::CatchAll(r) => {
+            let term_slice = &line.as_bytes()[r.start as usize..r.end as usize];
+            term_hash_map.mutate_or_create(term_slice, is_id_like, true)
         }
         #[cfg(feature = "whitespace")]
         Token::Whitespace(num_whitespace) => *num_whitespace,
@@ -299,8 +300,21 @@ impl PrelimDocGroup {
                 | Token::Number(_)
                 | Token::Uuid(_)
                 | Token::Word(_)
-                | Token::CatchAll(_)
                 | Token::Punctuation(_) => {
+                    let ct = create_composite_token(token, line, term_hash_map, false);
+                    TemplateTokenWithMeta {
+                        token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
+                            ct,
+                            token
+                                .as_bytes(line)
+                                .expect("Token should have bytes (except whitespace)")
+                                .to_vec(),
+                        )),
+                        token_index: token_pos as u32,
+                    }
+                }
+                #[cfg(feature = "token_limit")]
+                Token::CatchAll(_) => {
                     let ct = create_composite_token(token, line, term_hash_map, false);
                     TemplateTokenWithMeta {
                         token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
@@ -475,14 +489,14 @@ pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> Pre
         let line: String = line.into();
         let tokenizer = Tokenizer::new(&line);
         tokens.extend(tokenizer);
-        //if tokens.len() == 1 {
-        //println!("num: {num}");
-        //println!("Line: {:?}", line);
-        //println!(
-        //"{:?}",
-        //crate::tokenizer::tokens_as_string(&line, tokens.iter().cloned())
-        //);
-        //}
+        if tokens.len() == 2318 {
+            //println!("num: {num}");
+            println!("Line: {:?}", line);
+            println!(
+                "{:?}",
+                crate::tokenizer::tokens_as_string(&line, tokens.iter().cloned())
+            );
+        }
         //let fingerprint = fingerprint(&tokens);
 
         preliminary_docs.insert(&tokens, &line, &mut term_hash_map);
