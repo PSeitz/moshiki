@@ -44,7 +44,6 @@ whitespace = []
 # Token limit after which we put the texts into a seperate dictionary
 token_limit = []
 
-
 # debug in bench profile
 [profile.bench]
 debug = true

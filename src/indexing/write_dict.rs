@@ -30,7 +30,7 @@ pub fn write_dictionary_and_generate_mapping(
 
     let mut builder = tantivy_sstable::Dictionary::<VecU32ValueSSTable>::builder(wtr)?;
 
-    // We may have duplicate terms, so we need to ensure that we assign the same new ID to the
+    // Note: We may have duplicate terms due to the unique term hashmap, so we need to ensure that we assign the same new ID to the
     // same term and not insert it multiple times.
     let mut new_id: u32 = 0;
     let mut template_ids = Vec::new();

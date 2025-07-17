@@ -85,6 +85,24 @@ impl RegularTermMap {
         });
         id
     }
+
+    #[inline]
+    /// This is VERY expensive, so use it only when necessary.
+    /// We scan the dict.
+    pub fn find_term_for_term_id(&self, term_id: u32) -> &[u8] {
+        self.map
+            .iter()
+            .find_map(|(bytes, addr)| {
+                let id: u32 = self.map.read(addr);
+                if id == term_id { Some(bytes) } else { None }
+            })
+            .unwrap_or_else(|| {
+                // If not found, we check the unique buffer
+                self.iter_unique()
+                    .find_map(|(bytes, id)| if id == term_id { Some(bytes) } else { None })
+                    .expect("Term ID not found in either map")
+            })
+    }
 }
 
 impl TermStore for RegularTermMap {
@@ -155,6 +173,15 @@ impl IndexingTermmap {
         } else {
             self.regular.mutate_or_create(key, is_id_like)
         }
+    }
+
+    #[inline]
+    /// This is VERY expensive, so use it only when necessary.
+    /// We scan the dict.
+    ///
+    /// ONLY scans the regular map.
+    pub fn find_term_for_term_id(&self, term_id: u32) -> &[u8] {
+        self.regular.find_term_for_term_id(term_id)
     }
 }
 

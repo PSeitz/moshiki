@@ -12,6 +12,7 @@ use super::{
 use crate::{
     columns::write_column_and_remap,
     constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME},
+    indexing::patterns::split_templates,
     templates::write_templates,
 };
 
@@ -32,6 +33,11 @@ impl IndexWriter {
         _report: bool,
     ) -> io::Result<()> {
         let mut preliminary_index = preliminary_index(lines);
+        // More templates
+        if std::env::var("ST").is_ok() {
+            split_templates(&mut preliminary_index);
+        }
+        // Less templates
         merge_templates(&mut preliminary_index);
         if std::env::var("STATS").is_ok() {
             preliminary_index.print_stats();
