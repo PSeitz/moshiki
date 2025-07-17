@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::TemplateId;
 use crate::indexing::termmap::TermStore;
 use crate::indexing::{DocGroups, GroupId};
-use crate::tokenizer::{Token, TokenType, Tokenizer};
+use crate::tokenizer::{Token, TokenType, TokenTypeTrait, Tokenizer};
 use stacker::fastcmp::fast_short_slice_compare;
 
 use super::termmap::IndexingTermmap;
@@ -53,6 +53,16 @@ impl ConstTemplateToken {
         self.composite_token.term_id()
     }
 }
+impl TokenTypeTrait for IndexingTemplateToken {
+    fn token_type(&self) -> TokenType {
+        match self {
+            IndexingTemplateToken::Constant(ct) => ct.composite_token.token_type(),
+            IndexingTemplateToken::Variable { token_type, .. } => *token_type,
+            #[cfg(feature = "whitespace")]
+            IndexingTemplateToken::Whitespace(_) => TokenType::Whitespace,
+        }
+    }
+}
 
 impl IndexingTemplateToken {
     pub fn new_variable(column_index: usize, token_type: TokenType) -> Self {
@@ -69,14 +79,6 @@ impl IndexingTemplateToken {
             IndexingTemplateToken::Variable { .. } => true,
             #[cfg(feature = "whitespace")]
             IndexingTemplateToken::Whitespace(_) => false,
-        }
-    }
-    pub fn token_type(&self) -> TokenType {
-        match self {
-            IndexingTemplateToken::Constant(ct) => ct.composite_token.token_type(),
-            IndexingTemplateToken::Variable { token_type, .. } => *token_type,
-            #[cfg(feature = "whitespace")]
-            IndexingTemplateToken::Whitespace(_) => TokenType::Whitespace,
         }
     }
 }
@@ -491,7 +493,7 @@ pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> Pre
         tokens.extend(tokenizer);
         if tokens.len() == 2318 {
             //println!("num: {num}");
-            println!("Line: {:?}", line);
+            println!("Line: {line:?}");
             println!(
                 "{:?}",
                 crate::tokenizer::tokens_as_string(&line, tokens.iter().cloned())

@@ -1,48 +1,19 @@
 use std::io::{self};
-use std::path::PathBuf;
 
 use fxhash::FxHashMap;
 
-use crate::columns::{Columns, decompress_column};
-use crate::dict::{Dict, SearchResult};
-use crate::templates::{MatchResult, TemplateWithMeta, read_templates};
+use crate::dict::SearchResult;
+use crate::index::Index;
+use crate::templates::MatchResult;
 use crate::{Doc, TemplateId};
 
 pub struct Searcher {
-    dictionary: Dict,
-    folder: PathBuf,
-    templates: Templates,
-}
-pub struct Templates {
-    templates: Vec<TemplateWithMeta>,
-}
-impl Templates {
-    pub fn get_template(&self, template_id: TemplateId) -> &TemplateWithMeta {
-        &self.templates[template_id.0 as usize]
-    }
-
-    fn iter(&self) -> impl Iterator<Item = &TemplateWithMeta> {
-        self.templates.iter()
-    }
+    index: Index,
 }
 
 impl Searcher {
-    pub fn new(folder: &str) -> io::Result<Self> {
-        let dictionary = Dict::new(folder)?;
-        let folder = PathBuf::from(folder);
-        let templates = read_templates(&folder)?;
-        for (idx, template) in templates.iter().enumerate() {
-            assert_eq!(
-                idx, template.template_id.0 as usize,
-                "Template ID mismatch at index {idx}",
-            );
-        }
-        let templates = Templates { templates };
-        Ok(Searcher {
-            dictionary,
-            templates,
-            folder,
-        })
+    pub fn new(index: Index) -> Self {
+        Searcher { index }
     }
 
     pub fn retrieve_doc(&self, docs: &[Doc]) -> io::Result<Vec<String>> {
@@ -50,10 +21,11 @@ impl Searcher {
         let mut documents = Vec::new();
         for doc in docs {
             let reconstructed = self
+                .index
                 .templates
                 .get_template(doc.template_id)
                 .template
-                .reconstruct(&doc.term_ids, &self.dictionary)?;
+                .reconstruct(&doc.term_ids, &self.index.dictionary)?;
             documents.push(reconstructed);
         }
 
@@ -70,6 +42,7 @@ impl Searcher {
     fn get_potential_templates(&self, query: &str) -> FxHashMap<TemplateId, MatchResult> {
         // Get potential matches
         let matching_template_ids: FxHashMap<TemplateId, MatchResult> = self
+            .index
             .templates
             .iter()
             .filter_map(|template| {
@@ -135,7 +108,7 @@ impl Searcher {
     pub fn search(&self, query: &str) -> io::Result<Vec<Doc>> {
         let term = query.as_bytes();
         // The term may not exist in the dictionary, only in the templates.
-        let search_result = self.dictionary.search_single_term(term)?;
+        let search_result = self.index.dictionary.search_single_term(term)?;
 
         // Get potential matches
         let matching_template_ids: FxHashMap<TemplateId, MatchResult> =
@@ -153,28 +126,7 @@ impl Searcher {
         template_id: TemplateId,
         max_hits: Option<usize>,
     ) -> io::Result<Vec<Vec<u32>>> {
-        // The number of variables with num_docs will used to retrieve the other terms
-        // of a document.
-        let num_docs = self.templates.get_template(template_id).num_docs();
-        let columns: Columns = decompress_column(&self.folder, template_id, num_docs)?;
-
-        let mut documents_ids_hit = Vec::new();
-        for doc_id in columns.get_doc_ids(&match_fn) {
-            documents_ids_hit.push(doc_id);
-            if let Some(max) = max_hits {
-                if documents_ids_hit.len() >= max {
-                    break;
-                }
-            }
-        }
-
-        let mut all_documents = Vec::new();
-        // Now we have the document IDs that contain the term ID.
-        // We need to retrieve the other termids of the documents.
-        for doc_id in documents_ids_hit.iter() {
-            let document_terms = columns.get_term_ids(*doc_id).collect();
-            all_documents.push(document_terms);
-        }
-        Ok(all_documents)
+        self.index
+            .search_in_zstd_column(match_fn, template_id, max_hits)
     }
 }

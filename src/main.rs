@@ -5,8 +5,8 @@ use std::path::Path;
 use std::{fs, io};
 
 use moshiki::constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME};
+use moshiki::index::Index;
 use moshiki::indexing::IndexWriter;
-use moshiki::search::Searcher;
 
 use tikv_jemallocator::Jemalloc;
 
@@ -207,7 +207,9 @@ fn main() {
     if args.get(1) == Some(&"search".to_string()) {
         let search_term = args.get(2).expect("Search term is required");
         let output_folder = args.get(3).expect("Output folder is required");
-        let searcher = Searcher::new(output_folder).expect("Failed to create searcher");
+        let searcher = Index::new(output_folder)
+            .expect("Failed to create searcher")
+            .searcher();
         let res = searcher
             .search_and_retrieve(search_term)
             .expect("Failed to search");

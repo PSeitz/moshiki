@@ -39,6 +39,7 @@ impl IndexWriter {
         }
         // Less templates
         merge_templates(&mut preliminary_index);
+
         if std::env::var("STATS").is_ok() {
             preliminary_index.print_stats();
         }

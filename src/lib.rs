@@ -1,10 +1,12 @@
 pub mod columns;
 pub mod constants;
 pub mod dict;
+pub mod index;
 pub mod indexing;
 pub mod search;
 pub mod templates;
 pub mod tokenizer;
+
 use serde::{Deserialize, Serialize};
 pub use tokenizer::Token;
 
@@ -28,8 +30,8 @@ mod tests {
 
     use tempfile::TempDir;
 
+    use crate::index::Index;
     use crate::indexing::IndexWriter;
-    use crate::search::Searcher;
 
     pub fn index<T: Into<String>>(output_folder: &str, lines: impl Iterator<Item = T>) {
         let writer = IndexWriter::new(output_folder.to_string());
@@ -44,7 +46,7 @@ mod tests {
             ["hello world", "hello there", "nice line"].into_iter(),
         );
 
-        let searcher = Searcher::new(output_folder).unwrap();
+        let searcher = Index::new(output_folder).unwrap().searcher();
 
         let results = searcher.search_and_retrieve("hello").unwrap();
         assert_eq!(results.len(), 2);
@@ -62,7 +64,7 @@ mod tests {
             ["hello world", "hello there", "cool nice line"].into_iter(),
         );
 
-        let searcher = Searcher::new(output_folder).unwrap();
+        let searcher = Index::new(output_folder).unwrap().searcher();
 
         let results = searcher.search_and_retrieve("hello").unwrap();
         assert_eq!(results.len(), 2);

@@ -86,12 +86,20 @@ impl From<u8> for TokenType {
     }
 }
 
-/// Retrun an ID for each token type
-impl Token {
+pub trait TokenTypeTrait {
+    fn token_type(&self) -> TokenType;
+}
+impl TokenTypeTrait for TokenType {
+    #[inline]
+    fn token_type(&self) -> TokenType {
+        *self
+    }
+}
+impl TokenTypeTrait for Token {
     /// They start from 1, so we can use them for the fingerprint and differentiate from
     /// doesn't exist token type (0).
     #[inline]
-    pub fn token_type(&self) -> TokenType {
+    fn token_type(&self) -> TokenType {
         match self {
             Token::Word(_) => TokenType::Word,
             Token::Number(_) => TokenType::Number,
@@ -104,7 +112,10 @@ impl Token {
             Token::CatchAll(_) => TokenType::CatchAll,
         }
     }
+}
 
+/// Retrun an ID for each token type
+impl Token {
     #[inline]
     pub const fn type_id_num_bits() -> u8 {
         3 // 7 token types fit in 3 bits (2^3 = 8)

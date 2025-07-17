@@ -7,7 +7,7 @@ use crate::{
 
 /// Group identifier *equal to the fingerprint* of the token-type sequence.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct GroupId(u64);
+pub struct GroupId(pub u64);
 
 /// All document groups kept in a single hash-map bucket.
 #[derive(Debug, Default, Clone)]

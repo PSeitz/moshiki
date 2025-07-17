@@ -2,7 +2,7 @@ use fxhash::{FxHashMap, FxHashSet};
 
 use crate::indexing::{
     CompositeToken, ConstTemplateToken, GroupId, IndexingTemplateToken, PrelimDocGroup,
-    PreliminaryIndex,
+    PreliminaryIndex, fingerprint::fingerprint_types,
 };
 
 type TermIdMap<'a> = Vec<&'a [u8]>;
@@ -70,6 +70,12 @@ pub fn split_templates(index: &mut PreliminaryIndex) {
     // 1. Count the term frequencies in each group
     // 2. Extract into constants for all variables that occur more than the threshold
 
+    // Read threashold from environment variable if set, or default
+    let threshold = std::env::var("SPLIT_TEMPLATE_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(100_000);
+
     // Stage new groups and add afterwards
     let mut new_groups = Vec::new();
     for group in index.doc_groups.values_mut() {
@@ -95,7 +101,7 @@ pub fn split_templates(index: &mut PreliminaryIndex) {
                 }
                 // Convert variables to constants if they occur more than the threshold
                 for (term_id, frequency) in &term_frequencies {
-                    if *frequency > 100_000 {
+                    if *frequency > threshold {
                         let new_group = move_term_id_to_new_group(
                             group,
                             *term_id,
@@ -112,7 +118,17 @@ pub fn split_templates(index: &mut PreliminaryIndex) {
         }
     }
 
-    for new_group in new_groups {
+    let mut offset: u64 = 10000;
+    for mut new_group in new_groups {
+        let template_tokens = new_group
+            .template
+            .tokens
+            .iter()
+            .map(|token| token.token.clone());
+        let id = GroupId(fingerprint_types(template_tokens) + offset);
+        new_group.group_id = id;
+        offset += 1; // Ensure unique group ids
+
         index.doc_groups.insert_group(new_group);
     }
 }
@@ -189,12 +205,13 @@ pub fn move_term_id_to_new_group(
             ..
         } = &mut token.token
         {
-            if *col_idx as usize > column_index {
-                *col_idx -= 1; // Decrement the column index
+            if *col_idx > column_index {
+                *col_idx -= 1;
             }
         }
     }
 
+    //new_group.group_id = group.group_id; // Keep the same group id
     new_group
 }
 
