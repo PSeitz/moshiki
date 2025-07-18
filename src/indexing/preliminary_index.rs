@@ -1,10 +1,10 @@
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
-use crate::TemplateId;
 use crate::indexing::termmap::TermStore;
-use crate::indexing::{DocGroups, GroupId};
+use crate::indexing::DocGroups;
 use crate::tokenizer::{Token, TokenType, TokenTypeTrait, Tokenizer};
+use crate::TemplateId;
 use stacker::fastcmp::fast_short_slice_compare;
 
 use super::termmap::IndexingTermmap;
@@ -16,14 +16,14 @@ pub struct IndexingTemplate {
     pub tokens: Vec<TemplateTokenWithMeta>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub struct TemplateTokenWithMeta {
     pub token: IndexingTemplateToken,
     /// This is the index in the token sequence
     pub token_index: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub enum IndexingTemplateToken {
     Constant(ConstTemplateToken),
     Variable {
@@ -35,7 +35,7 @@ pub enum IndexingTemplateToken {
     Whitespace(u32),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub struct ConstTemplateToken {
     pub composite_token: CompositeToken,
     // u64 LE bytes for numbers (with feature_flag `number_as_string`)
@@ -94,23 +94,51 @@ impl PreliminaryIndex {
     /// Print stats about the number of tokens
     pub fn print_stats(&self) {
         // group by token length
-        let mut token_length_map: FxHashMap<usize, (usize, usize)> = FxHashMap::default();
+        //
+        #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+        struct Stats {
+            num_templates: usize,
+            num_docs: usize,
+            vals_in_columns: usize,
+            token_lists: Vec<Vec<TemplateTokenWithMeta>>,
+        }
+        let mut token_length_map: FxHashMap<usize, Stats> = FxHashMap::default();
 
         for group in self.doc_groups.values() {
             token_length_map
                 .entry(group.template.tokens.len())
                 .and_modify(|e| {
-                    e.0 += 1; // Increment count of this length
-                    e.1 += group.num_docs; // Add number of documents
+                    e.num_templates += 1; // Increment count of this length
+                    e.num_docs += group.num_docs; // Add number of documents
+                    e.vals_in_columns += group.vals_in_columns();
+                    e.token_lists.push(group.template.tokens.clone());
                 })
-                .or_insert((1, group.num_docs));
+                .or_insert(Stats {
+                    num_templates: 1,
+                    num_docs: group.num_docs,
+                    vals_in_columns: group.vals_in_columns(),
+                    token_lists: vec![group.template.tokens.clone()],
+                });
         }
         println!("Token Length Stats:");
         // sort by key
         let mut sorted_lengths: Vec<_> = token_length_map.iter().collect();
         sorted_lengths.sort_by_key(|&(k, _)| k);
-        for (length, (count, num_docs)) in sorted_lengths {
-            println!("Num Tokens: {length}, Num Templates: {count} Num Docs: {num_docs}");
+        for (length, stats) in sorted_lengths {
+            println!(
+                "Num Tokens: {length}, Num Templates: {} Num Docs: {} ValsInColumns: {}",
+                stats.num_templates, stats.num_docs, stats.vals_in_columns
+            );
+            // Print the token types to see how they differ
+            if stats.token_lists.len() > 1 {
+                for tokens in stats.token_lists.iter() {
+                    let token_types: String = tokens
+                        .iter()
+                        .map(|tt| tt.token.token_type().get_color_code())
+                        .collect();
+                    println!("{token_types}");
+                }
+            }
         }
 
         println!("Total Number of Groups: {}", self.doc_groups.num_groups());
@@ -213,12 +241,30 @@ pub struct PrelimDocGroup {
     pub template: IndexingTemplate,
     /// Tokens of the first document in this group. We use it to compare token types
     //pub tokens: Vec<Token>,
-    pub group_id: GroupId,
     pub columns: Vec<Vec<u32>>,
     pub num_docs: usize,
 }
 
 impl PrelimDocGroup {
+    pub fn vals_in_columns(&self) -> usize {
+        self.columns.iter().map(|c| c.len()).sum()
+    }
+
+    #[inline]
+    pub fn remove_rows<F>(&mut self, mut keep: F)
+    where
+        F: FnMut(&u32) -> bool,
+    {
+        for column in self.columns.iter_mut() {
+            let mut row = 0;
+            column.retain(|_| {
+                let keep = keep(&row);
+                row += 1;
+                keep
+            });
+        }
+    }
+
     /// Return an iterator over the columns, yielding a tuple of (is_catch_all, &[u32])
     pub fn iter_columns(&self) -> impl Iterator<Item = (bool, &[u32])> {
         self.template.tokens.iter().flat_map(|template_token| {
@@ -258,6 +304,7 @@ impl PrelimDocGroup {
             }
         }
     }
+
     pub fn convert_to_variable(&mut self, token_idx: usize, _term_hash_map: &mut IndexingTermmap) {
         // Convert the token at token_idx to a variable
         let template_token = &mut self.template.tokens[token_idx];
@@ -288,12 +335,7 @@ impl PrelimDocGroup {
     }
 
     #[cold]
-    pub fn new(
-        id: GroupId,
-        tokens: &[Token],
-        line: &str,
-        term_hash_map: &mut IndexingTermmap,
-    ) -> Self {
+    pub fn new(tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) -> Self {
         let template_tokens = tokens
             .iter()
             .enumerate()
@@ -345,7 +387,6 @@ impl PrelimDocGroup {
             },
             columns: Vec::new(),
             num_docs: 1,
-            group_id: id,
             //tokens: tokens.to_vec(),
         }
     }
@@ -358,7 +399,6 @@ impl PrelimDocGroup {
         term_hash_map: &mut IndexingTermmap,
     ) {
         // Compare with template and update if necessary
-        // TODO: fast path here to quickly hashcheck all the constants after e.g. 1000 documents
         for template_token in &mut self.template.tokens {
             match &mut template_token.token {
                 IndexingTemplateToken::Constant(existing_ct) => {
@@ -433,26 +473,13 @@ pub fn check_is_id_like(column: &[u32]) -> bool {
     //unique_count == total_count
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompositeToken {
     token_type: TokenType,
     term_id: u32,
 }
 
-impl std::fmt::Debug for CompositeToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Display both the token type and term ID
-        write!(
-            f,
-            "CompositeToken(type: {:?}, term_id: {})",
-            self.token_type(),
-            self.term_id()
-        )
-    }
-}
-
 impl CompositeToken {
-    /// Pack a TokenType (4 bits) and a 28-bit ID into one u32
     #[inline]
     pub fn new(token_type: TokenType, term_id: u32) -> Self {
         CompositeToken {
@@ -461,13 +488,11 @@ impl CompositeToken {
         }
     }
 
-    /// Extract the TokenType from the top 4 bits
     #[inline]
     pub fn token_type(&self) -> TokenType {
         self.token_type
     }
 
-    /// Extract the 28-bit term ID
     #[inline]
     pub fn term_id(&self) -> u32 {
         self.term_id
@@ -572,18 +597,31 @@ pub fn term_id_idx_to_template_ids(
     for (template_id, group) in prelim_index.doc_groups.values().enumerate() {
         for (is_catch_all, column) in group.iter_columns() {
             if is_catch_all {
-                for term_id in column {
-                    catch_all_term_id_to_templates[*term_id as usize].insert(template_id as u32);
+                for term_id in dedup_term_ids_iter(column.iter().copied()) {
+                    catch_all_term_id_to_templates[term_id as usize].insert(template_id as u32);
                 }
             } else {
-                for term_id in column {
-                    term_id_to_templates[*term_id as usize].insert(template_id as u32);
+                for term_id in dedup_term_ids_iter(column.iter().copied()) {
+                    term_id_to_templates[term_id as usize].insert(template_id as u32);
                 }
             }
         }
     }
 
     (term_id_to_templates, catch_all_term_id_to_templates)
+}
+
+// Filter repeated term IDs in an iterator (in a row, not globally)
+fn dedup_term_ids_iter(iter: impl Iterator<Item = u32>) -> impl Iterator<Item = u32> {
+    let mut last_id: Option<u32> = None;
+    iter.filter(move |&id| {
+        if Some(id) == last_id {
+            false
+        } else {
+            last_id = Some(id);
+            true
+        }
+    })
 }
 
 //impl<'a> PrelimDoc<'a> {

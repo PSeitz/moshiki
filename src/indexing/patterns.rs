@@ -2,7 +2,7 @@ use fxhash::{FxHashMap, FxHashSet};
 
 use crate::indexing::{
     CompositeToken, ConstTemplateToken, GroupId, IndexingTemplateToken, PrelimDocGroup,
-    PreliminaryIndex, fingerprint::fingerprint_types,
+    PreliminaryIndex,
 };
 
 type TermIdMap<'a> = Vec<&'a [u8]>;
@@ -74,10 +74,11 @@ pub fn split_templates(index: &mut PreliminaryIndex) {
     let threshold = std::env::var("SPLIT_TEMPLATE_THRESHOLD")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(100_000);
+        .unwrap_or(400_000);
 
     // Stage new groups and add afterwards
     let mut new_groups = Vec::new();
+    // This may change later
     for group in index.doc_groups.values_mut() {
         // Collect term frequencies
         // TODO:: This can be done more efficiently.
@@ -102,11 +103,22 @@ pub fn split_templates(index: &mut PreliminaryIndex) {
                 // Convert variables to constants if they occur more than the threshold
                 for (term_id, frequency) in &term_frequencies {
                     if *frequency > threshold {
+                        println!("Num Values in Columns Before: {}", group.vals_in_columns());
+                        let num_tokens = group.template.tokens.len();
+                        println!(
+                            "Moving term id {term_id} with freq {frequency} from template {num_tokens} to a constant",
+                        );
                         let new_group = move_term_id_to_new_group(
                             group,
                             *term_id,
                             column_index,
                             &mut index.term_hash_map,
+                        );
+                        println!(
+                            "Num Values in Columns After: {}, new_group {}, Total {}",
+                            group.vals_in_columns(),
+                            new_group.vals_in_columns(),
+                            group.vals_in_columns() + new_group.vals_in_columns()
                         );
                         new_groups.push(new_group);
                         // Add the new group to the index
@@ -118,18 +130,8 @@ pub fn split_templates(index: &mut PreliminaryIndex) {
         }
     }
 
-    let mut offset: u64 = 10000;
-    for mut new_group in new_groups {
-        let template_tokens = new_group
-            .template
-            .tokens
-            .iter()
-            .map(|token| token.token.clone());
-        let id = GroupId(fingerprint_types(template_tokens) + offset);
-        new_group.group_id = id;
-        offset += 1; // Ensure unique group ids
-
-        index.doc_groups.insert_group(new_group);
+    for new_group in new_groups {
+        index.doc_groups.insert_new_group(new_group);
     }
 }
 pub fn move_term_id_to_new_group(
@@ -141,7 +143,7 @@ pub fn move_term_id_to_new_group(
     let mut marked_rows_to_move_new_group = FxHashSet::default();
     for (row_idx, &term_id_in_row) in group.columns[column_index].iter().enumerate() {
         if term_id_in_row == term_id {
-            marked_rows_to_move_new_group.insert(row_idx);
+            marked_rows_to_move_new_group.insert(row_idx as u32);
         }
     }
     // Create a new group
@@ -150,29 +152,12 @@ pub fn move_term_id_to_new_group(
     let mut new_group = group.clone();
 
     // Move the rows to the new group
-    // Iterate both columns
-    for (idx, column) in new_group.columns.iter_mut().enumerate() {
-        if idx == column_index {
-            // This is the column we are moving the term to
-            continue;
-        }
-        // Keep the term in the new group
-        let mut row = 0;
-        column.retain(|_| {
-            let keep = marked_rows_to_move_new_group.contains(&row);
-            row += 1;
-            keep
-        });
-    }
-    for column in &mut group.columns {
-        // Remove the term from the old group
-        let mut row = 0;
-        column.retain(|_| {
-            let keep = !marked_rows_to_move_new_group.contains(&row);
-            row += 1;
-            keep
-        });
-    }
+    new_group.remove_rows(|row| marked_rows_to_move_new_group.contains(row));
+    group.remove_rows(|row| !marked_rows_to_move_new_group.contains(row));
+    // Update num_docs
+    new_group.num_docs = marked_rows_to_move_new_group.len();
+    group.num_docs -= new_group.num_docs;
+
     // Replace the variable token with a constant token
     for token in &mut new_group.template.tokens {
         if let IndexingTemplateToken::Variable {
@@ -211,7 +196,6 @@ pub fn move_term_id_to_new_group(
         }
     }
 
-    //new_group.group_id = group.group_id; // Keep the same group id
     new_group
 }
 
@@ -255,7 +239,7 @@ pub fn merge_templates(index: &mut PreliminaryIndex) {
             index.doc_groups.remove(idx);
         }
         // Insert the merged group back into the index
-        index.doc_groups.insert_group(first_group);
+        index.doc_groups.insert_new_group(first_group);
     }
 }
 

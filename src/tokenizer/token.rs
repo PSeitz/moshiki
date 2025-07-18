@@ -52,6 +52,20 @@ pub enum TokenType {
 }
 
 impl TokenType {
+    pub fn get_color_code(&self) -> &'static str {
+        match self {
+            TokenType::Word => "W",
+            TokenType::Number => concat!("\x1b[33m", "N", "\x1b[0m"),
+            TokenType::IPv4 => concat!("\x1b[34m", "I", "\x1b[0m"),
+            TokenType::Uuid => concat!("\x1b[35m", "U", "\x1b[0m"),
+            TokenType::Punctuation => "P",
+            #[cfg(feature = "whitespace")]
+            TokenType::Whitespace => concat!("\x1b[36m", "S", "\x1b[0m"),
+            #[cfg(feature = "token_limit")]
+            TokenType::CatchAll => concat!("\x1b[31m", "C", "\x1b[0m"),
+        }
+    }
+
     pub fn is_catch_all(&self) -> bool {
         #[cfg(feature = "token_limit")]
         {

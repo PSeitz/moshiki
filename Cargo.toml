@@ -30,15 +30,12 @@ harness = false
 name = "bench_indexing"
 harness = false
 
-
 [features]
 default = ["number_as_string"]
 # Improves performance and compression
 number_as_string = []
 # Slightly Lower performance and compression
 match_composite_id = []
-# Use partitioned vec instead of hashmap
-doc_groups_vec = []
 # Special whitespace handling
 whitespace = []
 # Token limit after which we put the texts into a seperate dictionary

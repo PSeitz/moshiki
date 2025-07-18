@@ -100,6 +100,7 @@ pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec
 pub struct Tokenizer<'a> {
     input: &'a str,
     pos: u32,
+    #[cfg(feature = "token_limit")]
     token_count: usize,
 }
 
@@ -113,6 +114,7 @@ impl<'a> Tokenizer<'a> {
         Tokenizer {
             input,
             pos: 0,
+            #[cfg(feature = "token_limit")]
             token_count: 0,
         }
     }
@@ -173,7 +175,10 @@ impl<'a> Iterator for Tokenizer<'a> {
                 .count() as u32;
             let start = self.pos;
             self.pos += len;
-            self.token_count += 1;
+            #[cfg(feature = "token_limit")]
+            {
+                self.token_count += 1;
+            }
             return Some(Token::Punctuation(start..self.pos));
         }
 
@@ -217,7 +222,10 @@ impl<'a> Iterator for Tokenizer<'a> {
             Token::Word(start..self.pos)
         };
 
-        self.token_count += 1;
+        #[cfg(feature = "token_limit")]
+        {
+            self.token_count += 1;
+        }
         Some(token)
     }
 }
