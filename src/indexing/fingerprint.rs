@@ -2,7 +2,7 @@ use std::hash::Hasher;
 
 use fxhash::FxHasher;
 
-use crate::{tokenizer::TokenTypeTrait, Token};
+use crate::{Token, tokenizer::TokenTypeTrait};
 
 pub fn fingerprint_tokens2(tokens: &[Token]) -> u64 {
     let mut hasher = FxHasher::default();

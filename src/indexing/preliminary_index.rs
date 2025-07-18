@@ -145,7 +145,7 @@ impl PreliminaryIndex {
 
         // Dictionary stats
         // Avg length of terms
-        let total_terms = self.term_hash_map.regular.len();
+        let total_terms = self.term_hash_map.regular.num_terms();
         let total_length: usize = self
             .term_hash_map
             .regular
@@ -154,7 +154,7 @@ impl PreliminaryIndex {
             .sum::<usize>();
         let avg_length = total_length as f32 / total_terms as f32;
         println!("Total Terms: {total_terms}, Avg Length: {avg_length:.2}");
-        let total_catch_all_terms = self.term_hash_map.catch_all.len();
+        let total_catch_all_terms = self.term_hash_map.catch_all.num_terms();
         let total_catch_all_length: usize = self
             .term_hash_map
             .catch_all
@@ -589,10 +589,15 @@ impl SingleOrHashSet {
 pub fn term_id_idx_to_template_ids(
     prelim_index: &PreliminaryIndex,
 ) -> (Vec<SingleOrHashSet>, Vec<SingleOrHashSet>) {
+    let num_terms = prelim_index.term_hash_map.regular.num_terms()
+        + prelim_index.term_hash_map.catch_all.num_terms();
+    // Poor mans bitvec
+    let mut marked_termids = vec![false; num_terms];
+
     let mut catch_all_term_id_to_templates: Vec<SingleOrHashSet> =
-        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.catch_all.len()];
+        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.catch_all.num_terms()];
     let mut term_id_to_templates: Vec<SingleOrHashSet> =
-        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.regular.len()];
+        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.regular.num_terms()];
 
     for (template_id, group) in prelim_index.doc_groups.values().enumerate() {
         for (is_catch_all, column) in group.iter_columns() {
@@ -600,6 +605,16 @@ pub fn term_id_idx_to_template_ids(
                 for term_id in dedup_term_ids_iter(column.iter().copied()) {
                     catch_all_term_id_to_templates[term_id as usize].insert(template_id as u32);
                 }
+            } else if column.len() > 500_000 {
+                for term_id in column.iter().copied() {
+                    marked_termids[term_id as usize] = true;
+                }
+                for (term_id, is_marked) in marked_termids.iter().enumerate() {
+                    if *is_marked {
+                        term_id_to_templates[term_id].insert(template_id as u32);
+                    }
+                }
+                marked_termids.fill(false);
             } else {
                 for term_id in dedup_term_ids_iter(column.iter().copied()) {
                     term_id_to_templates[term_id as usize].insert(template_id as u32);

@@ -1,7 +1,7 @@
 use super::doc_groups_hashmap::DocGroups as DocGroupsHashMap;
 use crate::{
-    indexing::{doc_groups_hashmap::Fingerprint, termmap::IndexingTermmap, PrelimDocGroup},
     Token,
+    indexing::{PrelimDocGroup, doc_groups_hashmap::Fingerprint, termmap::IndexingTermmap},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

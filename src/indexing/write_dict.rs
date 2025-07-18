@@ -15,9 +15,9 @@ pub fn write_dictionary_and_generate_mapping(
     term_hash_map: impl TermStore,
     term_id_to_template_id: &[SingleOrHashSet],
 ) -> io::Result<Vec<u32>> {
-    let len = term_hash_map.len();
+    let len = term_hash_map.num_terms();
     let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(len);
-    let max_old_id = term_hash_map.len() as u32;
+    let max_old_id = term_hash_map.num_terms() as u32;
     for (term_bytes, old_id) in term_hash_map.iter() {
         sorted_terms.push((term_bytes, old_id));
     }

@@ -2,16 +2,16 @@ use stacker::ArenaHashMap;
 use std::iter;
 
 pub trait TermStore {
-    fn len(&self) -> usize;
+    fn num_terms(&self) -> usize;
     fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_>;
     fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.num_terms() == 0
     }
 }
 
 impl<T: TermStore + ?Sized> TermStore for &T {
-    fn len(&self) -> usize {
-        (**self).len()
+    fn num_terms(&self) -> usize {
+        (**self).num_terms()
     }
     fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_> {
         (**self).iter()
@@ -20,15 +20,15 @@ impl<T: TermStore + ?Sized> TermStore for &T {
 
 pub struct RegularTermMap {
     map: ArenaHashMap,
-    unique: Vec<u8>,
-    next: u32,
+    unique_terms: Vec<u8>,
+    next_term_id: u32,
 }
 impl Default for RegularTermMap {
     fn default() -> Self {
         RegularTermMap {
             map: ArenaHashMap::default(),
-            unique: Vec::with_capacity(1024 * 1024), // 1 MiB initial capacity
-            next: 0,
+            unique_terms: Vec::with_capacity(1024 * 1024), // 1 MiB initial capacity
+            next_term_id: 0,
         }
     }
 }
@@ -37,14 +37,14 @@ impl RegularTermMap {
     #[inline]
     fn push_unique(&mut self, bytes: &[u8], id: u32) {
         let len = bytes.len() as u32;
-        self.unique.extend_from_slice(&len.to_le_bytes());
-        self.unique.extend_from_slice(bytes);
-        self.unique.extend_from_slice(&id.to_le_bytes());
+        self.unique_terms.extend_from_slice(&len.to_le_bytes());
+        self.unique_terms.extend_from_slice(bytes);
+        self.unique_terms.extend_from_slice(&id.to_le_bytes());
     }
 
     /// Iterator over the flat buffer — kept `pub(crate)` for the tests.
     pub(crate) fn iter_unique(&self) -> impl Iterator<Item = (&[u8], u32)> {
-        let buf = &self.unique;
+        let buf = &self.unique_terms;
         let mut pos = 0usize;
 
         iter::from_fn(move || {
@@ -68,17 +68,17 @@ impl RegularTermMap {
     #[inline]
     fn mutate_or_create(&mut self, key: &[u8], is_id_like: bool) -> u32 {
         if is_id_like {
-            let id = self.next;
+            let id = self.next_term_id;
             self.push_unique(key, id);
-            self.next += 1;
+            self.next_term_id += 1;
             return id;
         }
 
         let mut id = 0;
         self.map.mutate_or_create(key, |opt| {
             id = opt.unwrap_or_else(|| {
-                let new_id = self.next;
-                self.next += 1;
+                let new_id = self.next_term_id;
+                self.next_term_id += 1;
                 new_id
             });
             id
@@ -106,8 +106,8 @@ impl RegularTermMap {
 }
 
 impl TermStore for RegularTermMap {
-    fn len(&self) -> usize {
-        self.map.len() + self.iter_unique().count()
+    fn num_terms(&self) -> usize {
+        self.next_term_id as usize
     }
 
     fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_> {
@@ -144,7 +144,7 @@ impl CatchAllTermMap {
 }
 
 impl TermStore for CatchAllTermMap {
-    fn len(&self) -> usize {
+    fn num_terms(&self) -> usize {
         self.map.len()
     }
 
@@ -212,7 +212,7 @@ mod tests {
         map.mutate_or_create(b"bbb", true, false); // id-like
         map.mutate_or_create(b"catch", false, true); // catch-all
 
-        assert_eq!(map.regular.len(), 2); // 1 regular + 1 unique
-        assert_eq!(map.catch_all.len(), 1);
+        assert_eq!(map.regular.num_terms(), 2); // 1 regular + 1 unique
+        assert_eq!(map.catch_all.num_terms(), 1);
     }
 }

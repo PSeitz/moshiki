@@ -1,11 +1,11 @@
 use fxhash::FxHashMap;
 
 use crate::{
-    indexing::{
-        fingerprint::fingerprint_types, fingerprint_tokens, termmap::IndexingTermmap,
-        PrelimDocGroup,
-    },
     Token,
+    indexing::{
+        PrelimDocGroup, fingerprint::fingerprint_types, fingerprint_tokens,
+        termmap::IndexingTermmap,
+    },
 };
 
 pub(crate) type Fingerprint = u64;
