@@ -19,7 +19,7 @@ impl<T: TermStore + ?Sized> TermStore for &T {
 }
 
 pub struct RegularTermMap {
-    map: ArenaHashMap,
+    map: ArenaHashMap<u32>,
     unique_terms: Vec<u8>,
     next_term_id: u32,
 }
@@ -92,10 +92,7 @@ impl RegularTermMap {
     pub fn find_term_for_term_id(&self, term_id: u32) -> &[u8] {
         self.map
             .iter()
-            .find_map(|(bytes, addr)| {
-                let id: u32 = self.map.read(addr);
-                if id == term_id { Some(bytes) } else { None }
-            })
+            .find_map(|(bytes, id)| if id == term_id { Some(bytes) } else { None })
             .unwrap_or_else(|| {
                 // If not found, we check the unique buffer
                 self.iter_unique()
@@ -111,12 +108,7 @@ impl TermStore for RegularTermMap {
     }
 
     fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_> {
-        Box::new(
-            self.map
-                .iter()
-                .map(|(bytes, addr)| (bytes, self.map.read(addr)))
-                .chain(self.iter_unique()),
-        )
+        Box::new(self.map.iter().chain(self.iter_unique()))
     }
 }
 
@@ -124,7 +116,7 @@ impl TermStore for RegularTermMap {
 
 #[derive(Default)]
 pub struct CatchAllTermMap {
-    map: ArenaHashMap,
+    map: ArenaHashMap<u32>,
     next: u32,
 }
 impl CatchAllTermMap {
@@ -149,11 +141,7 @@ impl TermStore for CatchAllTermMap {
     }
 
     fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_> {
-        Box::new(
-            self.map
-                .iter()
-                .map(|(bytes, addr)| (bytes, self.map.read(addr))),
-        )
+        Box::new(self.map.iter())
     }
 }
 

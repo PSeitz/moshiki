@@ -14,19 +14,19 @@ use crate::shared_arena_hashmap::SharedArenaHashMap;
 /// ArenaHashMap is like SharedArenaHashMap but takes ownership
 /// of the memory arena. The memory arena stores the serialized
 /// keys and values.
-pub struct ArenaHashMap {
-    shared_arena_hashmap: SharedArenaHashMap,
+pub struct ArenaHashMap<V: Copy + Default> {
+    shared_arena_hashmap: SharedArenaHashMap<V>,
     pub memory_arena: MemoryArena,
 }
 
-impl Default for ArenaHashMap {
+impl<V: Copy + Default> Default for ArenaHashMap<V> {
     fn default() -> Self {
         ArenaHashMap::with_capacity(4)
     }
 }
 
-impl ArenaHashMap {
-    pub fn with_capacity(table_size: usize) -> ArenaHashMap {
+impl<V: Copy + Default> ArenaHashMap<V> {
+    pub fn with_capacity(table_size: usize) -> ArenaHashMap<V> {
         let memory_arena = MemoryArena::default();
 
         ArenaHashMap {
@@ -56,14 +56,13 @@ impl ArenaHashMap {
     }
 
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = (&[u8], Addr)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&[u8], V)> {
         self.shared_arena_hashmap.iter(&self.memory_arena)
     }
 
     /// Get a value associated to a key.
     #[inline]
-    pub fn get<V>(&self, key: &[u8]) -> Option<V>
-    where V: Copy + 'static {
+    pub fn get(&self, key: &[u8]) -> Option<V> {
         self.shared_arena_hashmap.get(key, &self.memory_arena)
     }
 
@@ -78,10 +77,9 @@ impl ArenaHashMap {
     /// If the key already as an associated value, then it will be passed
     /// `Some(previous_value)`.
     #[inline]
-    pub fn mutate_or_create<V>(&mut self, key: &[u8], updater: impl FnMut(Option<V>) -> V)
-    where V: Copy + 'static {
+    pub fn mutate_or_create(&mut self, key: &[u8], updater: impl FnMut(Option<V>) -> V) -> V {
         self.shared_arena_hashmap
-            .mutate_or_create(key, &mut self.memory_arena, updater);
+            .mutate_or_create(key, &mut self.memory_arena, updater)
     }
 }
 
@@ -94,7 +92,7 @@ mod tests {
 
     #[test]
     fn test_hash_map() {
-        let mut hash_map: ArenaHashMap = ArenaHashMap::default();
+        let mut hash_map: ArenaHashMap<u32> = ArenaHashMap::default();
         hash_map.mutate_or_create(b"abc", |opt_val: Option<u32>| {
             assert_eq!(opt_val, None);
             3u32
@@ -117,14 +115,14 @@ mod tests {
     }
     #[test]
     fn test_empty_hashmap() {
-        let hash_map: ArenaHashMap = ArenaHashMap::default();
-        assert_eq!(hash_map.get::<u32>(b"abc"), None);
+        let hash_map: ArenaHashMap<u32> = ArenaHashMap::default();
+        assert_eq!(hash_map.get(b"abc"), None);
     }
 
     #[test]
     fn test_many_terms() {
         let mut terms: Vec<String> = (0..20_000).map(|val| val.to_string()).collect();
-        let mut hash_map: ArenaHashMap = ArenaHashMap::default();
+        let mut hash_map: ArenaHashMap<u32> = ArenaHashMap::default();
         for term in terms.iter() {
             hash_map.mutate_or_create(term.as_bytes(), |_opt_val: Option<u32>| 5u32);
         }

@@ -209,9 +209,7 @@ impl<'a> Iterator for Tokenizer<'a> {
             self.pos += num_bytes as u32;
             match kind {
                 Kind::IPv4 => Token::IPv4(start..self.pos),
-                Kind::Number => {
-                    Token::Number(Number::new(self.input, start as usize..self.pos as usize))
-                }
+                Kind::Number => Token::Number(Number::new(self.input, start..self.pos)),
                 #[cfg(feature = "match_composite_id")]
                 Kind::Composite => Token::Word(start..self.pos),
                 Kind::Uuid => Token::Uuid(start..self.pos),
