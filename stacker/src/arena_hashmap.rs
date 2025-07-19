@@ -107,8 +107,7 @@ mod tests {
         });
         let mut vanilla_hash_map = HashMap::new();
         let iter_values = hash_map.iter();
-        for (key, addr) in iter_values {
-            let val: u32 = hash_map.memory_arena.read(addr);
+        for (key, val) in iter_values {
             vanilla_hash_map.insert(key.to_owned(), val);
         }
         assert_eq!(vanilla_hash_map.len(), 2);

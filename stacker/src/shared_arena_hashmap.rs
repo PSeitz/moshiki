@@ -326,7 +326,7 @@ impl<V: Copy + Default> SharedArenaHashMap<V> {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{compute_previous_power_of_two, SharedArenaHashMap};
+    use super::{SharedArenaHashMap, compute_previous_power_of_two};
     use crate::MemoryArena;
 
     #[test]
