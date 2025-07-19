@@ -10,10 +10,8 @@ use super::{
     write_dict::write_dictionary_and_generate_mapping,
 };
 use crate::{
-    columns::write_column_and_remap,
-    constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME},
-    indexing::patterns::split_templates,
-    templates::write_templates,
+    columns::write_column_and_remap, constants::DICTIONARY_NAME,
+    indexing::patterns::split_templates, templates::write_templates,
 };
 
 pub struct IndexWriter {
@@ -44,27 +42,17 @@ impl IndexWriter {
             preliminary_index.print_stats();
         }
         assign_template_ids(&mut preliminary_index);
-        let (term_id_idx, term_id_idx_catch_all) = term_id_idx_to_template_ids(&preliminary_index);
+        let term_id_idx = term_id_idx_to_template_ids(&preliminary_index);
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
             &self.output_folder.join(DICTIONARY_NAME),
             &preliminary_index.term_hash_map.regular,
             &term_id_idx,
         )?;
-        let old_catch_all_to_new_id_map = write_dictionary_and_generate_mapping(
-            &self.output_folder.join(CATCH_ALL_DICTIONARY_NAME),
-            &preliminary_index.term_hash_map.catch_all,
-            &term_id_idx_catch_all,
-        )?;
 
         write_templates(&preliminary_index, Path::new(&self.output_folder))?;
 
         for group in preliminary_index.doc_groups.values() {
-            write_column_and_remap(
-                &self.output_folder,
-                group,
-                &old_to_new_id_map,
-                &old_catch_all_to_new_id_map,
-            )?;
+            write_column_and_remap(&self.output_folder, group, &old_to_new_id_map)?;
         }
         Ok(())
     }

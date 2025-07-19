@@ -9,9 +9,6 @@ pub use number::*;
 pub use number_as_string::*;
 pub use token::*;
 
-#[cfg(feature = "token_limit")]
-const MAX_TOKENS: usize = 100000;
-
 const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
     let mut lookup = [false; 256];
     let mut i = 0;
@@ -100,8 +97,6 @@ pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec
 pub struct Tokenizer<'a> {
     input: &'a str,
     pos: u32,
-    #[cfg(feature = "token_limit")]
-    token_count: usize,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -111,12 +106,7 @@ impl<'a> Tokenizer<'a> {
 
     #[inline]
     pub fn new(input: &'a str) -> Self {
-        Tokenizer {
-            input,
-            pos: 0,
-            #[cfg(feature = "token_limit")]
-            token_count: 0,
-        }
+        Tokenizer { input, pos: 0 }
     }
 
     #[inline]
@@ -144,15 +134,6 @@ impl<'a> Iterator for Tokenizer<'a> {
             return None;
         }
 
-        // too many tokens → catch-all
-        #[cfg(feature = "token_limit")]
-        if self.token_count >= MAX_TOKENS {
-            let start = self.pos;
-            self.pos = self.input.len() as u32;
-            self.token_count += 1;
-            return Some(Token::CatchAll(start..self.pos));
-        }
-
         let bytes = &self.input.as_bytes()[self.pos as usize..];
 
         // 1) Whitespace
@@ -175,10 +156,6 @@ impl<'a> Iterator for Tokenizer<'a> {
                 .count() as u32;
             let start = self.pos;
             self.pos += len;
-            #[cfg(feature = "token_limit")]
-            {
-                self.token_count += 1;
-            }
             return Some(Token::Punctuation(start..self.pos));
         }
 
@@ -220,10 +197,6 @@ impl<'a> Iterator for Tokenizer<'a> {
             Token::Word(start..self.pos)
         };
 
-        #[cfg(feature = "token_limit")]
-        {
-            self.token_count += 1;
-        }
         Some(token)
     }
 }
@@ -640,22 +613,6 @@ mod tests {
                 _ => assert_eq!(tok.to_string(line), *expected_str),
             }
         }
-    }
-
-    #[test]
-    #[cfg(feature = "token_limit")]
-    fn test_max_tokens() {
-        if MAX_TOKENS != 100 {
-            return; // This test is only valid if MAX_TOKENS is set to 100
-        }
-        let first_part = "a ".repeat(55); // = 110 tokens
-        let catch_all = "b ".repeat(5); // = 10 tokens
-        let line = format!("{first_part}{catch_all}");
-
-        let toks: Vec<_> = tokenize(&line);
-        assert_eq!(toks.len(), 101);
-        assert_eq!(toks[100].token_type(), TokenType::CatchAll);
-        assert_eq!(toks[100].to_string(&line), "a a a a a b b b b b ");
     }
 
     #[test]

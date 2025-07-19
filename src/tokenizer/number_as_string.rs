@@ -18,7 +18,7 @@ impl Number {
     /// Returns the original substring slice from the input.
     #[inline]
     pub fn as_bytes<'a>(&self, input: &'a str) -> &'a [u8] {
-        input[self.str_range.start as usize..self.str_range.end as usize].as_bytes()
+        &input.as_bytes()[self.str_range.start as usize..self.str_range.end as usize]
     }
 
     /// Converts the stored substring into a standalone `String`.

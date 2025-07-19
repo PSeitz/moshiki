@@ -17,8 +17,6 @@ enum MergeableTokenGroup {
     // Can merge if the number of whitespace tokens matches
     #[cfg(feature = "whitespace")]
     Whitespace(u32),
-    // Catch all can only be merged with other catch alls
-    CatchAll,
 }
 
 impl MergeableTokenGroup {
@@ -31,13 +29,7 @@ impl MergeableTokenGroup {
                     MergeableTokenGroup::Constant(constant_token.text.to_vec())
                 }
             }
-            IndexingTemplateToken::Variable { token_type, .. } => {
-                if token_type.is_catch_all() {
-                    MergeableTokenGroup::CatchAll
-                } else {
-                    MergeableTokenGroup::Variable
-                }
-            }
+            IndexingTemplateToken::Variable { .. } => MergeableTokenGroup::Variable,
             #[cfg(feature = "whitespace")]
             IndexingTemplateToken::Whitespace(num) => {
                 if num_docs < 100 {
@@ -86,16 +78,7 @@ pub fn split_templates(index: &mut PreliminaryIndex) {
         let mut term_frequencies: FxHashMap<u32, u32> = FxHashMap::default();
 
         for token in group.template.tokens.clone() {
-            if let IndexingTemplateToken::Variable {
-                token_type,
-                column_index,
-                is_id_like: _,
-            } = token.token
-            {
-                // If it's a catch all, we can skip it for now
-                if token_type.is_catch_all() {
-                    continue;
-                }
+            if let IndexingTemplateToken::Variable { column_index, .. } = token.token {
                 let column = &group.columns[column_index];
                 for term_id in column {
                     *term_frequencies.entry(*term_id).or_insert(0) += 1;

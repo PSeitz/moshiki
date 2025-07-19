@@ -112,55 +112,15 @@ impl TermStore for RegularTermMap {
     }
 }
 
-/* ----------------------- catch-all map (hash-only) ----------------------- */
-
-#[derive(Default)]
-pub struct CatchAllTermMap {
-    map: ArenaHashMap<u32>,
-    next: u32,
-}
-impl CatchAllTermMap {
-    #[inline]
-    fn mutate_or_create(&mut self, key: &[u8]) -> u32 {
-        let mut id = 0;
-        self.map.mutate_or_create(key, |opt| {
-            id = opt.unwrap_or_else(|| {
-                let new_id = self.next;
-                self.next += 1;
-                new_id
-            });
-            id
-        });
-        id
-    }
-}
-
-impl TermStore for CatchAllTermMap {
-    fn num_terms(&self) -> usize {
-        self.map.len()
-    }
-
-    fn iter(&self) -> Box<dyn Iterator<Item = (&[u8], u32)> + '_> {
-        Box::new(self.map.iter())
-    }
-}
-
-/* --------------------------- public façade --------------------------- */
-
 #[derive(Default)]
 pub struct IndexingTermmap {
     pub regular: RegularTermMap,
-    pub catch_all: CatchAllTermMap,
 }
 
 impl IndexingTermmap {
     #[inline]
-    pub fn mutate_or_create(&mut self, key: &[u8], is_id_like: bool, is_catch_all: bool) -> u32 {
-        if is_catch_all {
-            self.catch_all.mutate_or_create(key)
-        } else {
-            self.regular.mutate_or_create(key, is_id_like)
-        }
+    pub fn mutate_or_create(&mut self, key: &[u8], is_id_like: bool) -> u32 {
+        self.regular.mutate_or_create(key, is_id_like)
     }
 
     #[inline]
@@ -183,8 +143,8 @@ mod tests {
     fn test_unique_serialization_and_iteration() {
         let mut map = IndexingTermmap::default();
 
-        let id1 = map.mutate_or_create(b"abc", true, false);
-        let id2 = map.mutate_or_create(b"defg", true, false);
+        let id1 = map.mutate_or_create(b"abc", true);
+        let id2 = map.mutate_or_create(b"defg", true);
         assert_eq!(id1, 0);
         assert_eq!(id2, 1);
 
@@ -196,11 +156,9 @@ mod tests {
     #[test]
     fn test_len_counts_all() {
         let mut map = IndexingTermmap::default();
-        map.mutate_or_create(b"aaa", false, false); // regular
-        map.mutate_or_create(b"bbb", true, false); // id-like
-        map.mutate_or_create(b"catch", false, true); // catch-all
+        map.mutate_or_create(b"aaa", false); // regular
+        map.mutate_or_create(b"bbb", true); // id-like
 
         assert_eq!(map.regular.num_terms(), 2); // 1 regular + 1 unique
-        assert_eq!(map.catch_all.num_terms(), 1);
     }
 }

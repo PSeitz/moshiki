@@ -13,8 +13,6 @@ pub enum Token {
     Punctuation(Range<u32>),
     #[cfg(feature = "whitespace")]
     Whitespace(u32),
-    #[cfg(feature = "token_limit")]
-    CatchAll(Range<u32>),
 }
 
 impl Token {
@@ -30,8 +28,6 @@ impl Token {
             (Token::Punctuation(_), Token::Punctuation(_)) => true,
             #[cfg(feature = "whitespace")]
             (Token::Whitespace(num1), Token::Whitespace(num2)) => num1 == num2,
-            #[cfg(feature = "token_limit")]
-            (Token::CatchAll(_), Token::CatchAll(_)) => true,
             _ => false,
         }
     }
@@ -47,8 +43,6 @@ pub enum TokenType {
     Punctuation = 5,
     #[cfg(feature = "whitespace")]
     Whitespace = 6,
-    #[cfg(feature = "token_limit")]
-    CatchAll = 7,
 }
 
 impl TokenType {
@@ -61,21 +55,9 @@ impl TokenType {
             TokenType::Punctuation => "P",
             #[cfg(feature = "whitespace")]
             TokenType::Whitespace => concat!("\x1b[36m", "S", "\x1b[0m"),
-            #[cfg(feature = "token_limit")]
-            TokenType::CatchAll => concat!("\x1b[31m", "C", "\x1b[0m"),
         }
     }
 
-    pub fn is_catch_all(&self) -> bool {
-        #[cfg(feature = "token_limit")]
-        {
-            *self == TokenType::CatchAll
-        }
-        #[cfg(not(feature = "token_limit"))]
-        {
-            false
-        }
-    }
     #[cfg(feature = "whitespace")]
     pub fn is_whitespace(&self) -> bool {
         *self == TokenType::Whitespace
@@ -93,8 +75,6 @@ impl From<u8> for TokenType {
             5 => TokenType::Punctuation,
             #[cfg(feature = "whitespace")]
             6 => TokenType::Whitespace,
-            #[cfg(feature = "token_limit")]
-            7 => TokenType::CatchAll,
             _ => panic!("Invalid token type"),
         }
     }
@@ -122,8 +102,6 @@ impl TokenTypeTrait for Token {
             Token::Punctuation(_) => TokenType::Punctuation,
             #[cfg(feature = "whitespace")]
             Token::Whitespace(_) => TokenType::Whitespace,
-            #[cfg(feature = "token_limit")]
-            Token::CatchAll(_) => TokenType::CatchAll,
         }
     }
 }
@@ -140,8 +118,6 @@ impl Token {
             Token::Word(r) | Token::IPv4(r) | Token::Uuid(r) | Token::Punctuation(r) => {
                 input[r.start as usize..r.end as usize].to_string()
             }
-            #[cfg(feature = "token_limit")]
-            Token::CatchAll(r) => input[r.start as usize..r.end as usize].to_string(),
             #[cfg(feature = "whitespace")]
             Token::Whitespace(num) => " ".repeat(*num as usize),
             Token::Number(num) => num.to_string(input),
@@ -154,8 +130,6 @@ impl Token {
             Token::Word(r) | Token::IPv4(r) | Token::Uuid(r) | Token::Punctuation(r) => {
                 Some(&input.as_bytes()[r.start as usize..r.end as usize])
             }
-            #[cfg(feature = "token_limit")]
-            Token::CatchAll(r) => Some(&input.as_bytes()[r.start as usize..r.end as usize]),
             Token::Number(n) => Some(n.as_bytes(input)),
             // White is ignored for now
             #[cfg(feature = "whitespace")]

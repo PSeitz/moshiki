@@ -4,7 +4,7 @@ use std::io::{BufRead, Write};
 use std::path::Path;
 use std::{fs, io};
 
-use moshiki::constants::{CATCH_ALL_DICTIONARY_NAME, DICTIONARY_NAME};
+use moshiki::constants::DICTIONARY_NAME;
 use moshiki::index::Index;
 use moshiki::indexing::IndexWriter;
 
@@ -19,7 +19,6 @@ struct Report {
     input_size: u64,
     output_size: u64,
     zstd_compressed_size: u64,
-    catch_all_dictionary_size: u64,
     dictionary_size: u64,
 }
 impl Report {
@@ -35,9 +34,6 @@ impl Report {
     }
     fn output_size_mb(&self) -> f64 {
         self.output_size as f64 / 1024.0 / 1024.0
-    }
-    fn catch_all_dict_size_mb(&self) -> f64 {
-        self.catch_all_dictionary_size as f64 / 1024.0 / 1024.0
     }
     fn dictionary_size_mb(&self) -> f64 {
         self.dictionary_size as f64 / 1024.0 / 1024.0
@@ -99,15 +95,14 @@ fn print_reports(reports: &[Report]) {
 
     // Header row
     println!(
-        "{:<name_width$}  {:<12} {:<12} {:<12} {:<12} {:<12} {:<15} {:<15}",
-        "Dataset",      // first column
-        "Throughput",   // 12 chars
-        "Input (MB)",   // 12 chars
-        "Output (MB)",  // 12 chars
-        "Comp Ratio",   // 12 chars
-        "Zstd (MB)",    // 12 chars
-        "FB Dict (MB)", // 15 chars
-        "Dict (MB)",    // 15 chars
+        "{:<name_width$}  {:<12} {:<12} {:<12} {:<12} {:<12} {:<15}",
+        "Dataset",     // first column
+        "Throughput",  // 12 chars
+        "Input (MB)",  // 12 chars
+        "Output (MB)", // 12 chars
+        "Comp Ratio",  // 12 chars
+        "Zstd (MB)",   // 12 chars
+        "Dict (MB)",   // 15 chars
         name_width = name_width
     );
 
@@ -119,10 +114,9 @@ fn print_reports(reports: &[Report]) {
         let output_mb = r.output_size_mb();
         let ratio = r.compression_ratio();
         let zstd_size = r.zstd_compressed_size_mb();
-        let catch_size = r.catch_all_dict_size_mb();
         let dict_size = r.dictionary_size_mb();
         println!(
-            "{file_name:<name_width$}  {throughput:<12.2} {input_mb:<12.2} {output_mb:<12.2} {ratio:<12.0} {zstd_size:<12.2} {catch_size:<15.2} {dict_size:<15.2}"
+            "{file_name:<name_width$}  {throughput:<12.2} {input_mb:<12.2} {output_mb:<12.2} {ratio:<12.0} {zstd_size:<12.2} {dict_size:<15.2}"
         );
     }
 }
@@ -161,9 +155,6 @@ fn generate_report(ndjson_files: &[String], output_folder: &str) -> io::Result<(
         let dict_size = fs::metadata(output_folder.join(DICTIONARY_NAME))
             .map(|md| md.len())
             .unwrap_or(0);
-        let catch_all_dictionary_size = fs::metadata(output_folder.join(CATCH_ALL_DICTIONARY_NAME))
-            .map(|md| md.len())
-            .unwrap_or(0);
 
         reports.push(Report {
             file_name: Path::new(ndjson_file)
@@ -175,7 +166,6 @@ fn generate_report(ndjson_files: &[String], output_folder: &str) -> io::Result<(
             input_size: file_size,
             zstd_compressed_size: zstd_compressed_size(ndjson_file)?,
             output_size: folder_size(output_folder)?,
-            catch_all_dictionary_size,
             dictionary_size: dict_size,
         });
     }

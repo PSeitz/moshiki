@@ -154,17 +154,6 @@ impl PreliminaryIndex {
             .sum::<usize>();
         let avg_length = total_length as f32 / total_terms as f32;
         println!("Total Terms: {total_terms}, Avg Length: {avg_length:.2}");
-        let total_catch_all_terms = self.term_hash_map.catch_all.num_terms();
-        let total_catch_all_length: usize = self
-            .term_hash_map
-            .catch_all
-            .iter()
-            .map(|(term_bytes, _)| term_bytes.len())
-            .sum();
-        let avg_catch_all_length = total_catch_all_length as f32 / total_catch_all_terms as f32;
-        println!(
-            "Total CatchAll Terms: {total_catch_all_terms}, Avg Length: {avg_catch_all_length:.2}"
-        );
 
         // Print the number of: unique like, constant, and variable tokens
         let mut num_like = 0;
@@ -215,24 +204,14 @@ fn get_term_id(
     term_hash_map: &mut IndexingTermmap,
     is_id_like: bool,
 ) -> u32 {
-    let token_type = token.token_type();
     match token {
         Token::IPv4(v) | Token::Uuid(v) | Token::Word(v) | Token::Punctuation(v) => {
             let term_slice = &line.as_bytes()[v.start as usize..v.end as usize];
-            term_hash_map.mutate_or_create(term_slice, is_id_like, false)
-        }
-        #[cfg(feature = "token_limit")]
-        Token::CatchAll(r) => {
-            let term_slice = &line.as_bytes()[r.start as usize..r.end as usize];
-            term_hash_map.mutate_or_create(term_slice, is_id_like, true)
+            term_hash_map.mutate_or_create(term_slice, is_id_like)
         }
         #[cfg(feature = "whitespace")]
         Token::Whitespace(num_whitespace) => *num_whitespace,
-        Token::Number(number) => term_hash_map.mutate_or_create(
-            number.as_bytes(line),
-            is_id_like,
-            token_type.is_catch_all(),
-        ),
+        Token::Number(number) => term_hash_map.mutate_or_create(number.as_bytes(line), is_id_like),
     }
 }
 
@@ -265,15 +244,14 @@ impl PrelimDocGroup {
         }
     }
 
-    /// Return an iterator over the columns, yielding a tuple of (is_catch_all, &[u32])
-    pub fn iter_columns(&self) -> impl Iterator<Item = (bool, &[u32])> {
+    /// Return an iterator over the columns, yielding (&[u32])
+    pub fn iter_columns(&self) -> impl Iterator<Item = &[u32]> {
         self.template.tokens.iter().flat_map(|template_token| {
             // Iterate in the right order
             match template_token.token {
-                IndexingTemplateToken::Variable { column_index, .. } => Some((
-                    template_token.token.token_type().is_catch_all(),
-                    self.columns[column_index].as_slice(),
-                )),
+                IndexingTemplateToken::Variable { column_index, .. } => {
+                    Some(self.columns[column_index].as_slice())
+                }
                 _ => None,
             }
         })
@@ -345,20 +323,6 @@ impl PrelimDocGroup {
                 | Token::Uuid(_)
                 | Token::Word(_)
                 | Token::Punctuation(_) => {
-                    let ct = create_composite_token(token, line, term_hash_map, false);
-                    TemplateTokenWithMeta {
-                        token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
-                            ct,
-                            token
-                                .as_bytes(line)
-                                .expect("Token should have bytes (except whitespace)")
-                                .to_vec(),
-                        )),
-                        token_index: token_pos as u32,
-                    }
-                }
-                #[cfg(feature = "token_limit")]
-                Token::CatchAll(_) => {
                     let ct = create_composite_token(token, line, term_hash_map, false);
                     TemplateTokenWithMeta {
                         token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
@@ -586,26 +550,17 @@ impl SingleOrHashSet {
 /// Scan the columns and store in which templates a term ID is used
 ///
 /// We can use a vec for the term IDs, since they are guaranteed to be unique within a column.
-pub fn term_id_idx_to_template_ids(
-    prelim_index: &PreliminaryIndex,
-) -> (Vec<SingleOrHashSet>, Vec<SingleOrHashSet>) {
-    let num_terms = prelim_index.term_hash_map.regular.num_terms()
-        + prelim_index.term_hash_map.catch_all.num_terms();
+pub fn term_id_idx_to_template_ids(prelim_index: &PreliminaryIndex) -> Vec<SingleOrHashSet> {
+    let num_terms = prelim_index.term_hash_map.regular.num_terms();
     // Poor mans bitvec
     let mut marked_termids = vec![false; num_terms];
 
-    let mut catch_all_term_id_to_templates: Vec<SingleOrHashSet> =
-        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.catch_all.num_terms()];
     let mut term_id_to_templates: Vec<SingleOrHashSet> =
         vec![SingleOrHashSet::default(); prelim_index.term_hash_map.regular.num_terms()];
 
     for (template_id, group) in prelim_index.doc_groups.values().enumerate() {
-        for (is_catch_all, column) in group.iter_columns() {
-            if is_catch_all {
-                for term_id in dedup_term_ids_iter(column.iter().copied()) {
-                    catch_all_term_id_to_templates[term_id as usize].insert(template_id as u32);
-                }
-            } else if column.len() > 500_000 {
+        for column in group.iter_columns() {
+            if column.len() > 500_000 {
                 for term_id in column.iter().copied() {
                     marked_termids[term_id as usize] = true;
                 }
@@ -623,7 +578,7 @@ pub fn term_id_idx_to_template_ids(
         }
     }
 
-    (term_id_to_templates, catch_all_term_id_to_templates)
+    term_id_to_templates
 }
 
 // Filter repeated term IDs in an iterator (in a row, not globally)

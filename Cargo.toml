@@ -38,8 +38,6 @@ number_as_string = []
 match_composite_id = []
 # Special whitespace handling
 whitespace = []
-# Token limit after which we put the texts into a seperate dictionary
-token_limit = []
 
 # debug in bench profile
 [profile.bench]
