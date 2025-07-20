@@ -4,20 +4,7 @@ use fxhash::FxHasher;
 
 use crate::{Token, tokenizer::TokenTypeTrait};
 
-pub fn fingerprint_tokens2(tokens: &[Token]) -> u64 {
-    let mut hasher = FxHasher::default();
-    for token in tokens {
-        hasher.write_u8(token.token_type() as u8);
-        #[cfg(feature = "whitespace")]
-        if let Token::Whitespace(num) = token {
-            hasher.write_u32(*num);
-        }
-    }
-
-    hasher.finish()
-}
-
-pub fn fingerprint_tokens(tokens: &[Token]) -> u64 {
+pub(crate) fn fingerprint_tokens(tokens: &[Token]) -> u64 {
     let mut hasher = FxHasher::default();
     let mut block = [0u8; 8];
     let mut chunk_iter = tokens.chunks_exact(8);

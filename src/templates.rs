@@ -11,7 +11,7 @@ use crate::indexing::{self, IndexingTemplate, IndexingTemplateToken, Preliminary
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum MatchResult {
-    FullMatch,
+    Full,
     NoMatch,
     VariableMayMatch,
 }
@@ -84,7 +84,7 @@ impl Template {
         for token in &self.parts {
             let result = token.check_match(term);
             match result {
-                MatchResult::FullMatch => return MatchResult::FullMatch,
+                MatchResult::Full => return MatchResult::Full,
                 MatchResult::VariableMayMatch => match_result = MatchResult::VariableMayMatch,
                 MatchResult::NoMatch => continue,
             }
@@ -119,7 +119,7 @@ impl TemplateToken {
         match self {
             TemplateToken::Constant(constant) => {
                 if term.as_bytes() == constant {
-                    MatchResult::FullMatch
+                    MatchResult::Full
                 } else {
                     MatchResult::NoMatch
                 }
@@ -127,7 +127,7 @@ impl TemplateToken {
             TemplateToken::Variable => MatchResult::VariableMayMatch,
             TemplateToken::Whitespace(_) => {
                 if term.is_empty() {
-                    MatchResult::FullMatch
+                    MatchResult::Full
                 } else {
                     MatchResult::NoMatch
                 }

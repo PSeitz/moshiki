@@ -1,13 +1,13 @@
+//! This module provides functionality for reading and writing columns of data.
+
 use std::path::{Path, PathBuf};
-
-mod read;
-mod write;
-
-pub use read::*;
-pub use write::*;
 
 use crate::TemplateId;
 
+pub mod read;
+pub mod write;
+
+/// Returns the path to the template file for a given template ID.
 pub fn get_template_path(folder: &Path, template_id: TemplateId) -> PathBuf {
-    folder.join(format!("template_{}.zst", template_id.0))
+    folder.join(format!("{template_id:?}.col"))
 }

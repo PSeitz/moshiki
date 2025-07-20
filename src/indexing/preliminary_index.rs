@@ -10,21 +10,21 @@ use stacker::fastcmp::fast_short_slice_compare;
 use super::termmap::IndexingTermmap;
 
 #[derive(Debug, Clone, Default)]
-pub struct IndexingTemplate {
+pub(crate) struct IndexingTemplate {
     pub template_id: TemplateId,
     pub num_docs: usize,
     pub tokens: Vec<TemplateTokenWithMeta>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
-pub struct TemplateTokenWithMeta {
+pub(crate) struct TemplateTokenWithMeta {
     pub token: IndexingTemplateToken,
     /// This is the index in the token sequence
     pub token_index: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
-pub enum IndexingTemplateToken {
+pub(crate) enum IndexingTemplateToken {
     Constant(ConstTemplateToken),
     Variable {
         is_id_like: bool,
@@ -36,21 +36,18 @@ pub enum IndexingTemplateToken {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
-pub struct ConstTemplateToken {
-    pub composite_token: CompositeToken,
+pub(crate) struct ConstTemplateToken {
+    pub(crate) composite_token: CompositeToken,
     // u64 LE bytes for numbers (with feature_flag `number_as_string`)
     // String for words
-    pub text: Vec<u8>,
+    pub(crate) text: Vec<u8>,
 }
 impl ConstTemplateToken {
-    pub fn new(token: CompositeToken, text: Vec<u8>) -> Self {
+    pub(crate) fn new(token: CompositeToken, text: Vec<u8>) -> Self {
         ConstTemplateToken {
             composite_token: token,
             text,
         }
-    }
-    pub fn term_id(&self) -> u32 {
-        self.composite_token.term_id()
     }
 }
 impl TokenTypeTrait for IndexingTemplateToken {
@@ -65,7 +62,7 @@ impl TokenTypeTrait for IndexingTemplateToken {
 }
 
 impl IndexingTemplateToken {
-    pub fn new_variable(column_index: usize, token_type: TokenType) -> Self {
+    pub(crate) fn new_variable(column_index: usize, token_type: TokenType) -> Self {
         IndexingTemplateToken::Variable {
             column_index,
             is_id_like: false,
@@ -73,7 +70,8 @@ impl IndexingTemplateToken {
         }
     }
 
-    pub fn is_variable(&self) -> bool {
+    #[allow(dead_code)]
+    pub(crate) fn is_variable(&self) -> bool {
         match self {
             IndexingTemplateToken::Constant(_) => false,
             IndexingTemplateToken::Variable { .. } => true,
@@ -83,16 +81,18 @@ impl IndexingTemplateToken {
     }
 }
 
+/// A preliminary index that contains the term hash map and document groups.
 pub struct PreliminaryIndex {
-    pub term_hash_map: IndexingTermmap,
+    pub(crate) term_hash_map: IndexingTermmap,
+    /// Document groups, keyed by the token length.
     pub doc_groups: DocGroups,
 }
 impl PreliminaryIndex {
-    pub fn iter_templates(&self) -> impl Iterator<Item = &IndexingTemplate> {
+    pub(crate) fn iter_templates(&self) -> impl Iterator<Item = &IndexingTemplate> {
         self.doc_groups.values().map(|group| &group.template)
     }
     /// Print stats about the number of tokens
-    pub fn print_stats(&self) {
+    pub(crate) fn print_stats(&self) {
         // group by token length
         //
         #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -216,21 +216,21 @@ fn get_term_id(
 }
 
 #[derive(Debug, Clone)]
-pub struct PrelimDocGroup {
-    pub template: IndexingTemplate,
+pub(crate) struct PrelimDocGroup {
+    pub(crate) template: IndexingTemplate,
     /// Tokens of the first document in this group. We use it to compare token types
     //pub tokens: Vec<Token>,
-    pub columns: Vec<Vec<u32>>,
-    pub num_docs: usize,
+    pub(crate) columns: Vec<Vec<u32>>,
+    pub(crate) num_docs: usize,
 }
 
 impl PrelimDocGroup {
-    pub fn vals_in_columns(&self) -> usize {
+    pub(crate) fn vals_in_columns(&self) -> usize {
         self.columns.iter().map(|c| c.len()).sum()
     }
 
     #[inline]
-    pub fn remove_rows<F>(&mut self, mut keep: F)
+    pub(crate) fn remove_rows<F>(&mut self, mut keep: F)
     where
         F: FnMut(&u32) -> bool,
     {
@@ -438,14 +438,14 @@ pub fn check_is_id_like(column: &[u32]) -> bool {
 }
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct CompositeToken {
+pub(crate) struct CompositeToken {
     token_type: TokenType,
     term_id: u32,
 }
 
 impl CompositeToken {
     #[inline]
-    pub fn new(token_type: TokenType, term_id: u32) -> Self {
+    pub(crate) fn new(token_type: TokenType, term_id: u32) -> Self {
         CompositeToken {
             token_type,
             term_id,
@@ -453,12 +453,12 @@ impl CompositeToken {
     }
 
     #[inline]
-    pub fn token_type(&self) -> TokenType {
+    pub(crate) fn token_type(&self) -> TokenType {
         self.token_type
     }
 
     #[inline]
-    pub fn term_id(&self) -> u32 {
+    pub(crate) fn term_id(&self) -> u32 {
         self.term_id
     }
 }
@@ -469,6 +469,7 @@ impl From<(TokenType, u32)> for CompositeToken {
     }
 }
 
+/// Create a preliminary index from log lines
 pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> PreliminaryIndex {
     let mut term_hash_map = IndexingTermmap::default();
     let mut preliminary_docs = DocGroups::default();
@@ -504,7 +505,7 @@ pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> Pre
 }
 
 #[derive(Clone)]
-pub enum SingleOrHashSet {
+pub(crate) enum SingleOrHashSet {
     Single(Option<u32>),
     HashSet(FxHashSet<u32>),
 }
@@ -550,7 +551,7 @@ impl SingleOrHashSet {
 /// Scan the columns and store in which templates a term ID is used
 ///
 /// We can use a vec for the term IDs, since they are guaranteed to be unique within a column.
-pub fn term_id_idx_to_template_ids(prelim_index: &PreliminaryIndex) -> Vec<SingleOrHashSet> {
+pub(crate) fn term_id_idx_to_template_ids(prelim_index: &PreliminaryIndex) -> Vec<SingleOrHashSet> {
     let num_terms = prelim_index.term_hash_map.regular.num_terms();
     // Poor mans bitvec
     let mut marked_termids = vec![false; num_terms];

@@ -1,15 +1,13 @@
 use std::io;
 use std::path::Path;
 
-use fxhash::FxHashMap;
 use tantivy_common::file_slice::FileSlice;
 
 use crate::TemplateId;
 use crate::constants::DICTIONARY_NAME;
 use crate::indexing::write_dict::VecU32ValueSSTable;
-use crate::tokenizer::tokenize;
 
-pub struct Dict {
+pub(crate) struct Dict {
     dictionary: tantivy_sstable::Dictionary<VecU32ValueSSTable>,
 }
 
@@ -36,22 +34,6 @@ impl Dict {
         Ok(Dict { dictionary })
     }
 
-    /// Search for terms in the dictionary and return a mapping of term IDs to template IDs.
-    /// The query is tokenized, and each token is looked up in the dictionary.
-    pub fn search(&self, query: &str) -> io::Result<FxHashMap<u32, Vec<TemplateId>>> {
-        let mut term_ids_to_template_ids: FxHashMap<u32, Vec<TemplateId>> = FxHashMap::default();
-        for token in tokenize(query) {
-            if let Some(term) = token.as_bytes(query) {
-                if let Ok(Some(search_result)) = self.search_single_term(term) {
-                    term_ids_to_template_ids
-                        .entry(search_result.term_id())
-                        .or_default()
-                        .extend(search_result.template_ids());
-                }
-            }
-        }
-        Ok(term_ids_to_template_ids)
-    }
     /// Search for a singe term in the dictionary and return its term ID and associated template
     /// IDs.
     pub fn search_single_term(&self, term: &[u8]) -> io::Result<Option<SearchResult>> {

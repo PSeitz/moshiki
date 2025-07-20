@@ -1,7 +1,8 @@
 #[cfg(not(feature = "number_as_string"))]
 pub mod number;
 #[cfg(feature = "number_as_string")]
-pub mod number_as_string;
+pub(crate) mod number_as_string;
+/// Token types
 pub mod token;
 #[cfg(not(feature = "number_as_string"))]
 pub use number::*;
@@ -72,22 +73,7 @@ const HEX_DIGIT_LOOKUP_TABLE: [bool; 256] = {
     lookup
 };
 
-pub fn tokenize_into(input: &str, tokens: &mut Vec<Token>) {
-    let tokenizer = Tokenizer::new(input);
-    for token in tokenizer {
-        tokens.push(token);
-    }
-}
-
-pub fn tokenize(input: &str) -> Vec<Token> {
-    Tokenizer::new(input).collect()
-}
-
-pub fn reconstruct_from_tokens(input: &str, tokens: impl Iterator<Item = Token>) -> String {
-    tokens.map(|t| t.to_string(input)).collect()
-}
-
-pub fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec<String> {
+pub(crate) fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>) -> Vec<String> {
     tokens.map(|t| t.to_string(input)).collect()
 }
 
@@ -100,18 +86,11 @@ pub struct Tokenizer<'a> {
 }
 
 impl<'a> Tokenizer<'a> {
-    pub fn tokenize(input: &'a str) -> Vec<String> {
-        Tokenizer::new(input).map(|t| t.to_string(input)).collect()
-    }
-
     #[inline]
+    /// Create a new Tokenizer for the given input string.
+    /// The tokenizer is an Iterator that yields `Token` objects.
     pub fn new(input: &'a str) -> Self {
         Tokenizer { input, pos: 0 }
-    }
-
-    #[inline]
-    pub fn get_text(&self) -> &'a str {
-        &self.input[self.pos as usize..]
     }
 }
 

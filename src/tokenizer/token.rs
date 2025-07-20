@@ -6,10 +6,15 @@ use super::Number;
 /// Typed token kinds with zero allocations
 #[derive(Debug, Clone)]
 pub enum Token {
+    /// IPv4 address
     IPv4(Range<u32>),
+    /// Number
     Number(Number), // u64 little endian representation
+    /// UUID
     Uuid(Range<u32>),
+    /// The default token
     Word(Range<u32>),
+    /// Punctuation token
     Punctuation(Range<u32>),
     #[cfg(feature = "whitespace")]
     Whitespace(u32),
@@ -35,17 +40,25 @@ impl Token {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 #[repr(u8)]
+/// The type of the token, used for fingerprinting and coloring
 pub enum TokenType {
+    /// Word
     Word = 1,
+    /// Number
     Number = 2,
+    /// IPv4
     IPv4 = 3,
+    /// UUID
     Uuid = 4,
+    /// Punctuation
     Punctuation = 5,
     #[cfg(feature = "whitespace")]
     Whitespace = 6,
 }
 
 impl TokenType {
+    /// Single colored char representation of the token type.
+    /// Good the see patterns.
     pub fn get_color_code(&self) -> &'static str {
         match self {
             TokenType::Word => "W",
@@ -80,7 +93,9 @@ impl From<u8> for TokenType {
     }
 }
 
+/// Trait to get the token type from a token
 pub trait TokenTypeTrait {
+    /// Returns the token type of the token
     fn token_type(&self) -> TokenType;
 }
 impl TokenTypeTrait for TokenType {
@@ -109,11 +124,7 @@ impl TokenTypeTrait for Token {
 /// Retrun an ID for each token type
 impl Token {
     #[inline]
-    pub const fn type_id_num_bits() -> u8 {
-        3 // 7 token types fit in 3 bits (2^3 = 8)
-    }
-    #[inline]
-    pub fn to_string(&self, input: &str) -> String {
+    pub(crate) fn to_string(&self, input: &str) -> String {
         match self {
             Token::Word(r) | Token::IPv4(r) | Token::Uuid(r) | Token::Punctuation(r) => {
                 input[r.start as usize..r.end as usize].to_string()
@@ -125,7 +136,7 @@ impl Token {
     }
 
     #[inline]
-    pub fn as_bytes<'a>(&'a self, input: &'a str) -> Option<&'a [u8]> {
+    pub(crate) fn as_bytes<'a>(&'a self, input: &'a str) -> Option<&'a [u8]> {
         match self {
             Token::Word(r) | Token::IPv4(r) | Token::Uuid(r) | Token::Punctuation(r) => {
                 Some(&input.as_bytes()[r.start as usize..r.end as usize])

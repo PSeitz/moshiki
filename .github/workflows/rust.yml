@@ -10,13 +10,19 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  build_and_test:
 
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
     - uses: actions-rust-lang/setup-rust-toolchain@v1
+    - name: Check formatting
+      run: cargo fmt -- --check
+    - name: Check lints
+      run: cargo clippy -- -D warnings
+    - name: Check documentation
+      run: cargo doc --no-deps
     - name: Build
       run: cargo build --verbose
     - name: Run tests

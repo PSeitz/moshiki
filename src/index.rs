@@ -3,17 +3,20 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::columns::{Columns, decompress_column};
+use crate::columns::read::{Columns, decompress_column};
 use crate::dict::Dict;
 use crate::search::Searcher;
 use crate::templates::{TemplateWithMeta, read_templates};
 use crate::{Doc, TemplateId};
 
 #[derive(Clone)]
+/// The main entry point for the index
+/// Just a wrapper around `IndexInner` with Arc
 pub struct Index {
     inner: Arc<IndexInner>,
 }
 impl Index {
+    /// Open an index from the specified folder.
     pub fn new(folder: &str) -> io::Result<Self> {
         let inner = IndexInner::new(folder)?;
         Ok(Index {
@@ -21,12 +24,9 @@ impl Index {
         })
     }
 
+    /// Create a new searcher for this index.
     pub fn searcher(&self) -> Searcher {
         Searcher::new(self.clone())
-    }
-
-    pub fn templates(&self) -> &Templates {
-        &self.inner.templates
     }
 }
 impl Deref for Index {
@@ -36,12 +36,13 @@ impl Deref for Index {
         &self.inner
     }
 }
+/// The inner structure of the index, containing the dictionary and templates.
 pub struct IndexInner {
     folder: PathBuf,
     pub(crate) dictionary: Arc<Dict>,
     pub(crate) templates: Templates,
 }
-pub struct Templates {
+pub(crate) struct Templates {
     templates: Vec<TemplateWithMeta>,
 }
 impl Templates {
@@ -55,7 +56,7 @@ impl Templates {
 }
 
 impl IndexInner {
-    pub fn new(folder: &str) -> io::Result<Self> {
+    pub(crate) fn new(folder: &str) -> io::Result<Self> {
         let dictionary = Dict::new(folder)?;
         let folder = PathBuf::from(folder);
         let templates = read_templates(&folder)?;
@@ -73,6 +74,7 @@ impl IndexInner {
         })
     }
 
+    /// Retrieve documents based on the provided `Doc` (template ID and term IDs).
     pub fn retrieve_doc(&self, docs: &[Doc]) -> io::Result<Vec<String>> {
         // Retrieve the documents for the term ID and template IDs.
         let mut documents = Vec::new();

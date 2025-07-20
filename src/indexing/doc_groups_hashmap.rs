@@ -18,23 +18,9 @@ pub struct DocGroups {
 }
 
 impl DocGroups {
-    /// Creates an empty collection.
-    #[inline]
-    pub fn new() -> Self {
-        Self {
-            groups: FxHashMap::default(),
-            next_group_salt: 0,
-        }
-    }
-
     #[must_use]
     pub fn len(&self) -> usize {
         self.groups.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     /// Inserts a document.
@@ -71,12 +57,6 @@ impl DocGroups {
         let id = fingerprint_types(template_tokens) + self.next_group_salt as u64;
 
         self.groups.insert(id, group);
-    }
-
-    /// Total number of groups.
-    #[inline]
-    pub fn num_groups(&self) -> usize {
-        self.groups.len()
     }
 
     /// Immutable iterator over *(GroupId, &PrelimDocGroup)*.

@@ -7,35 +7,21 @@ use crate::index::Index;
 use crate::templates::MatchResult;
 use crate::{Doc, TemplateId};
 
+/// Searcher is responsible for searching terms in the index and retrieving documents
 pub struct Searcher {
     index: Index,
 }
 
 impl Searcher {
+    /// Create a new Searcher with the given index.
     pub fn new(index: Index) -> Self {
         Searcher { index }
-    }
-
-    pub fn retrieve_doc(&self, docs: &[Doc]) -> io::Result<Vec<String>> {
-        // Retrieve the documents for the term ID and template IDs.
-        let mut documents = Vec::new();
-        for doc in docs {
-            let reconstructed = self
-                .index
-                .templates
-                .get_template(doc.template_id)
-                .template
-                .reconstruct(&doc.term_ids, &self.index.dictionary)?;
-            documents.push(reconstructed);
-        }
-
-        Ok(documents)
     }
 
     /// Search for a term and retrieve the documents that match the term.
     pub fn search_and_retrieve(&self, query: &str) -> io::Result<Vec<String>> {
         let docs = self.search(query)?;
-        self.retrieve_doc(&docs)
+        self.index.retrieve_doc(&docs)
     }
 
     /// Search for a term and retrieve potential templates that match the term.
@@ -48,7 +34,7 @@ impl Searcher {
             .filter_map(|template| {
                 let match_result = template.template.check_match(query);
                 match match_result {
-                    MatchResult::FullMatch | MatchResult::VariableMayMatch => {
+                    MatchResult::Full | MatchResult::VariableMayMatch => {
                         Some((template.template_id, match_result))
                     }
                     MatchResult::NoMatch => None,
@@ -67,7 +53,7 @@ impl Searcher {
         let mut matching_documents: Vec<Doc> = Vec::new();
         for (template_id, match_result) in matching_template_ids.into_iter() {
             let docs = match match_result {
-                MatchResult::FullMatch => {
+                MatchResult::Full => {
                     // Constant in template matches
                     self.search_in_zstd_column(|_| true, template_id, Some(10))?
                 }
