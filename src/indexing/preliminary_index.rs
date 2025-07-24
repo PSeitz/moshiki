@@ -37,15 +37,17 @@ pub(crate) enum IndexingTemplateToken {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub(crate) struct ConstTemplateToken {
-    pub(crate) composite_token: CompositeToken,
+    pub(crate) token_type: TokenType,
+    pub(crate) term_id: u32,
     // u64 LE bytes for numbers (with feature_flag `number_as_string`)
-    // String for words
+    // String for: words
     pub(crate) text: Vec<u8>,
 }
 impl ConstTemplateToken {
-    pub(crate) fn new(token: CompositeToken, text: Vec<u8>) -> Self {
+    pub(crate) fn new(token_type: TokenType, term_id: u32, text: Vec<u8>) -> Self {
         ConstTemplateToken {
-            composite_token: token,
+            token_type,
+            term_id,
             text,
         }
     }
@@ -53,7 +55,7 @@ impl ConstTemplateToken {
 impl TokenTypeTrait for IndexingTemplateToken {
     fn token_type(&self) -> TokenType {
         match self {
-            IndexingTemplateToken::Constant(ct) => ct.composite_token.token_type(),
+            IndexingTemplateToken::Constant(ct) => ct.token_type,
             IndexingTemplateToken::Variable { token_type, .. } => *token_type,
             #[cfg(feature = "whitespace")]
             IndexingTemplateToken::Whitespace(_) => TokenType::Whitespace,
@@ -184,19 +186,6 @@ impl PreliminaryIndex {
     }
 }
 
-fn create_composite_token(
-    token: &Token,
-    line: &str,
-    term_hash_map: &mut IndexingTermmap,
-    is_id_like: bool,
-) -> CompositeToken {
-    (
-        token.token_type(),
-        get_term_id(token, line, term_hash_map, is_id_like),
-    )
-        .into()
-}
-
 #[inline]
 fn get_term_id(
     token: &Token,
@@ -290,12 +279,10 @@ impl PrelimDocGroup {
             IndexingTemplateToken::Constant(existing_ct) => {
                 // This position is now variable
                 let column_index = self.columns.len();
-                let new_column = vec![existing_ct.composite_token.term_id(); self.num_docs];
+                let new_column = vec![existing_ct.term_id; self.num_docs];
                 self.columns.push(new_column);
-                template_token.token = IndexingTemplateToken::new_variable(
-                    column_index,
-                    existing_ct.composite_token.token_type(),
-                );
+                template_token.token =
+                    IndexingTemplateToken::new_variable(column_index, existing_ct.token_type);
             }
             #[cfg(feature = "whitespace")]
             IndexingTemplateToken::Whitespace(num) => {
@@ -322,19 +309,17 @@ impl PrelimDocGroup {
                 | Token::Number(_)
                 | Token::Uuid(_)
                 | Token::Word(_)
-                | Token::Punctuation(_) => {
-                    let ct = create_composite_token(token, line, term_hash_map, false);
-                    TemplateTokenWithMeta {
-                        token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
-                            ct,
-                            token
-                                .as_bytes(line)
-                                .expect("Token should have bytes (except whitespace)")
-                                .to_vec(),
-                        )),
-                        token_index: token_pos as u32,
-                    }
-                }
+                | Token::Punctuation(_) => TemplateTokenWithMeta {
+                    token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
+                        token.token_type(),
+                        get_term_id(token, line, term_hash_map, false),
+                        token
+                            .as_bytes(line)
+                            .expect("Token should have bytes (except whitespace)")
+                            .to_vec(),
+                    )),
+                    token_index: token_pos as u32,
+                },
                 #[cfg(feature = "whitespace")]
                 Token::Whitespace(num) => TemplateTokenWithMeta {
                     token: IndexingTemplateToken::Whitespace(*num),
@@ -374,8 +359,7 @@ impl PrelimDocGroup {
                         let ct = get_term_id(token, line, term_hash_map, false);
                         // This position is now variable
                         let column_index = self.columns.len();
-                        let mut new_column =
-                            vec![existing_ct.composite_token.term_id(); self.num_docs];
+                        let mut new_column = vec![existing_ct.term_id; self.num_docs];
                         new_column.push(ct);
                         self.columns.push(new_column);
                         template_token.token =
@@ -435,38 +419,6 @@ pub fn check_is_id_like(column: &[u32]) -> bool {
     unique_ratio >= 0.98
 
     //unique_count == total_count
-}
-
-#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(crate) struct CompositeToken {
-    token_type: TokenType,
-    term_id: u32,
-}
-
-impl CompositeToken {
-    #[inline]
-    pub(crate) fn new(token_type: TokenType, term_id: u32) -> Self {
-        CompositeToken {
-            token_type,
-            term_id,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn token_type(&self) -> TokenType {
-        self.token_type
-    }
-
-    #[inline]
-    pub(crate) fn term_id(&self) -> u32 {
-        self.term_id
-    }
-}
-impl From<(TokenType, u32)> for CompositeToken {
-    #[inline]
-    fn from(value: (TokenType, u32)) -> Self {
-        CompositeToken::new(value.0, value.1)
-    }
 }
 
 /// Create a preliminary index from log lines

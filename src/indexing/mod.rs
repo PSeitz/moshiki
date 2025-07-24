@@ -13,5 +13,3 @@ pub use index_writer::IndexWriter;
 pub use preliminary_index::*;
 
 pub(crate) use doc_groups::*;
-//#[cfg(not(feature = "doc_groups_vec"))]
-//pub use doc_groups_hashmap::*;

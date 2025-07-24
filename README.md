@@ -25,5 +25,4 @@ hdfs-logs-full       199.32       3286.67      110.93       30           198.51 
 # Indexing Improvements
 - [ ] Batch documents
 - [X] Partition by num tokens
-    - feature flag: `doc_groups_vec`
     - Probably the right approach, since it avoids breaking collisions

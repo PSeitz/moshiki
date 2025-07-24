@@ -1,8 +1,7 @@
 use fxhash::{FxHashMap, FxHashSet};
 
 use crate::indexing::{
-    CompositeToken, ConstTemplateToken, GroupId, IndexingTemplateToken, PrelimDocGroup,
-    PreliminaryIndex,
+    ConstTemplateToken, GroupId, IndexingTemplateToken, PrelimDocGroup, PreliminaryIndex,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -155,11 +154,11 @@ pub fn move_term_id_to_new_group(
                     .regular
                     .find_term_for_term_id(term_id)
                     .to_vec();
-                let composite_token = CompositeToken::new(*token_type, term_id);
-                token.token = IndexingTemplateToken::Constant(ConstTemplateToken {
-                    text: text.clone(),
-                    composite_token,
-                });
+                token.token = IndexingTemplateToken::Constant(ConstTemplateToken::new(
+                    *token_type,
+                    term_id,
+                    text.clone(),
+                ));
             }
         }
     }
