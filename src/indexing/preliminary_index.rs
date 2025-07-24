@@ -10,14 +10,15 @@ use stacker::fastcmp::fast_short_slice_compare;
 use super::termmap::IndexingTermmap;
 
 #[derive(Debug, Clone, Default)]
+/// This represents a temporary template during indexing
 pub(crate) struct IndexingTemplate {
     pub template_id: TemplateId,
     pub num_docs: usize,
-    pub tokens: Vec<TemplateTokenWithMeta>,
+    pub tokens: Vec<TemplateTokenWithPos>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
-pub(crate) struct TemplateTokenWithMeta {
+pub(crate) struct TemplateTokenWithPos {
     pub token: IndexingTemplateToken,
     /// This is the index in the token sequence
     pub token_index: u32,
@@ -38,18 +39,13 @@ pub(crate) enum IndexingTemplateToken {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub(crate) struct ConstTemplateToken {
     pub(crate) token_type: TokenType,
-    pub(crate) term_id: u32,
     // u64 LE bytes for numbers (with feature_flag `number_as_string`)
     // String for: words
     pub(crate) text: Vec<u8>,
 }
 impl ConstTemplateToken {
-    pub(crate) fn new(token_type: TokenType, term_id: u32, text: Vec<u8>) -> Self {
-        ConstTemplateToken {
-            token_type,
-            term_id,
-            text,
-        }
+    pub(crate) fn new(token_type: TokenType, text: Vec<u8>) -> Self {
+        ConstTemplateToken { token_type, text }
     }
 }
 impl TokenTypeTrait for IndexingTemplateToken {
@@ -102,7 +98,7 @@ impl PreliminaryIndex {
             num_templates: usize,
             num_docs: usize,
             vals_in_columns: usize,
-            token_lists: Vec<Vec<TemplateTokenWithMeta>>,
+            token_lists: Vec<Vec<TemplateTokenWithPos>>,
         }
         let mut token_length_map: FxHashMap<usize, Stats> = FxHashMap::default();
 
@@ -272,14 +268,16 @@ impl PrelimDocGroup {
         }
     }
 
-    pub fn convert_to_variable(&mut self, token_idx: usize, _term_hash_map: &mut IndexingTermmap) {
+    pub fn convert_to_variable(&mut self, token_idx: usize, term_hash_map: &mut IndexingTermmap) {
         // Convert the token at token_idx to a variable
         let template_token = &mut self.template.tokens[token_idx];
         match &mut template_token.token {
             IndexingTemplateToken::Constant(existing_ct) => {
                 // This position is now variable
                 let column_index = self.columns.len();
-                let new_column = vec![existing_ct.term_id; self.num_docs];
+                let term_id = term_hash_map.mutate_or_create(&existing_ct.text, false);
+
+                let new_column = vec![term_id; self.num_docs];
                 self.columns.push(new_column);
                 template_token.token =
                     IndexingTemplateToken::new_variable(column_index, existing_ct.token_type);
@@ -300,7 +298,7 @@ impl PrelimDocGroup {
     }
 
     #[cold]
-    pub fn new(tokens: &[Token], line: &str, term_hash_map: &mut IndexingTermmap) -> Self {
+    pub fn new(tokens: &[Token], line: &str) -> Self {
         let template_tokens = tokens
             .iter()
             .enumerate()
@@ -309,10 +307,9 @@ impl PrelimDocGroup {
                 | Token::Number(_)
                 | Token::Uuid(_)
                 | Token::Word(_)
-                | Token::Punctuation(_) => TemplateTokenWithMeta {
+                | Token::Punctuation(_) => TemplateTokenWithPos {
                     token: IndexingTemplateToken::Constant(ConstTemplateToken::new(
                         token.token_type(),
-                        get_term_id(token, line, term_hash_map, false),
                         token
                             .as_bytes(line)
                             .expect("Token should have bytes (except whitespace)")
@@ -321,7 +318,7 @@ impl PrelimDocGroup {
                     token_index: token_pos as u32,
                 },
                 #[cfg(feature = "whitespace")]
-                Token::Whitespace(num) => TemplateTokenWithMeta {
+                Token::Whitespace(num) => TemplateTokenWithPos {
                     token: IndexingTemplateToken::Whitespace(*num),
                     token_index: token_pos as u32,
                 },
@@ -336,7 +333,6 @@ impl PrelimDocGroup {
             },
             columns: Vec::new(),
             num_docs: 1,
-            //tokens: tokens.to_vec(),
         }
     }
 
@@ -359,7 +355,8 @@ impl PrelimDocGroup {
                         let ct = get_term_id(token, line, term_hash_map, false);
                         // This position is now variable
                         let column_index = self.columns.len();
-                        let mut new_column = vec![existing_ct.term_id; self.num_docs];
+                        let term_id = term_hash_map.mutate_or_create(&existing_ct.text, false);
+                        let mut new_column = vec![term_id; self.num_docs];
                         new_column.push(ct);
                         self.columns.push(new_column);
                         template_token.token =

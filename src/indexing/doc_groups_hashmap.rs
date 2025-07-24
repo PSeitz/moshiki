@@ -34,17 +34,17 @@ impl DocGroups {
                 entry.push(tokens, line, term_hash_map);
             }
             None => {
-                let group = PrelimDocGroup::new(tokens, line, term_hash_map);
+                let group = PrelimDocGroup::new(tokens, line);
                 self.groups.insert(id, group);
             }
         }
     }
 
-    /// Inserts a _new_ group.
+    /// Inserts a different group with the same fingerprint.
     ///
-    /// That means the original fingerprint is not used.
+    /// That means the original fingerprint is changed.
     ///
-    pub fn insert_new_group(&mut self, group: PrelimDocGroup) {
+    pub fn insert_duplicate(&mut self, group: PrelimDocGroup) {
         // Increment the salt to ensure that groups with the same fingerprint
         // but different lines are not merged.
         self.next_group_salt = self.next_group_salt.wrapping_add(1);

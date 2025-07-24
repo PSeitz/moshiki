@@ -156,7 +156,6 @@ pub fn move_term_id_to_new_group(
                     .to_vec();
                 token.token = IndexingTemplateToken::Constant(ConstTemplateToken::new(
                     *token_type,
-                    term_id,
                     text.clone(),
                 ));
             }

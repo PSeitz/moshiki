@@ -107,7 +107,7 @@ impl DocGroups {
     pub(crate) fn insert_new_group(&mut self, group: PrelimDocGroup) {
         let len = group.template.tokens.len();
         self.ensure_bucket(len);
-        self.group_by_token_len[len].insert_new_group(group);
+        self.group_by_token_len[len].insert_duplicate(group);
     }
 
     //fn get_group_id(&mut self, num_tokens: usize) -> GroupId {
