@@ -297,7 +297,6 @@ impl PrelimDocGroup {
         }
     }
 
-    #[cold]
     pub fn new(tokens: &[Token], line: &str) -> Self {
         let template_tokens = tokens
             .iter()
