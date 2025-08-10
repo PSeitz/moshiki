@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use crate::indexing::PrelimDocGroup;
+use crate::indexing::DocGroup;
 
 use super::get_template_path;
 
@@ -10,25 +10,9 @@ use super::get_template_path;
 /// Each column has the same number of terms
 pub fn write_column_and_remap(
     folder: &Path,
-    group: &PrelimDocGroup,
+    group: &DocGroup,
     old_to_new_id_map: &[u32],
 ) -> std::io::Result<()> {
-    //let mut byte_buffer = Vec::new();
-    //for (term_id) in group.iter_columns() {
-    //let mut num_buffer = Vec::new();
-    //for term_id in term_id {
-    //// Convert the term ID to the new ID using the mapping
-    //let new_term_id = &old_to_new_id_map[*term_id as usize];
-    //// Append the new term ID to the byte buffer
-    //num_buffer.push(*new_term_id);
-    //}
-    //if !num_buffer.is_empty() {
-    //let compressed_data: Vec<u8> =
-    //q_compress::auto_compress(&num_buffer, q_compress::DEFAULT_COMPRESSION_LEVEL);
-    //byte_buffer.extend_from_slice(&compressed_data);
-    //}
-    //}
-
     let mut byte_buffer = Vec::new();
     for term_id in group.iter_columns() {
         for term_id in term_id {

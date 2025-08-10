@@ -13,11 +13,7 @@ pub(crate) fn fingerprint_tokens(tokens: &[Token]) -> u64 {
             block[i] = t.token_type() as u8;
         }
         hasher.write(&block);
-        //hasher.write_u8(token.token_type() as u8);
-        //#[cfg(feature = "whitespace")]
-        //if let Token::Whitespace(num) = token {
-        //hasher.write_u32(*num);
-        //}
+        // TODO: feature "whitespace" support (or remove the feature)
     }
     // Handle the remaining tokens if the length is not a multiple of 8
     for token in chunk_iter.remainder() {

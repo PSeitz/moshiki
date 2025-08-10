@@ -200,8 +200,9 @@ fn get_term_id(
     }
 }
 
+/// A group of documents that share the same template during indexing.
 #[derive(Debug, Clone)]
-pub(crate) struct PrelimDocGroup {
+pub(crate) struct DocGroup {
     pub(crate) template: IndexingTemplate,
     /// Tokens of the first document in this group. We use it to compare token types
     //pub tokens: Vec<Token>,
@@ -209,7 +210,7 @@ pub(crate) struct PrelimDocGroup {
     pub(crate) num_docs: usize,
 }
 
-impl PrelimDocGroup {
+impl DocGroup {
     pub(crate) fn vals_in_columns(&self) -> usize {
         self.columns.iter().map(|c| c.len()).sum()
     }
@@ -242,7 +243,7 @@ impl PrelimDocGroup {
         })
     }
 
-    pub fn append(&mut self, other: &PrelimDocGroup) {
+    pub fn append(&mut self, other: &DocGroup) {
         self.num_docs += other.num_docs;
         // Merge only variable columns
         for (target_token, source_token) in self
@@ -382,22 +383,6 @@ impl PrelimDocGroup {
         }
         self.num_docs += 1;
     }
-
-    //pub(crate) fn matches_token_types(&self, tokens: &[Token]) -> bool {
-    //assert_eq!(
-    //self.template.tokens.len(),
-    //tokens.len(),
-    //"Token length mismatch: {} != {}",
-    //self.template.tokens.len(),
-    //tokens.len()
-    //);
-    //for (template_token, token) in self.tokens.iter().zip(tokens) {
-    //if !template_token.matches(token) {
-    //return false;
-    //}
-    //}
-    //true
-    //}
 }
 
 /// TODO: The check could be done on a bitvec, since we probably have very few term IDs
@@ -405,9 +390,7 @@ impl PrelimDocGroup {
 pub fn check_is_id_like(column: &[u32]) -> bool {
     let mut seen_ids = FxHashSet::default();
     for term_id in column {
-        if !seen_ids.insert(term_id) {
-            //return false; // Found a duplicate
-        }
+        seen_ids.insert(term_id);
     }
     let unique_count = seen_ids.len();
     let total_count = column.len();
@@ -423,26 +406,19 @@ pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> Pre
     let mut preliminary_docs = DocGroups::default();
 
     let mut tokens = Vec::new();
-    //let mut num = 0;
     for line in lines {
-        //num += 1;
         let line: String = line.into();
         let tokenizer = Tokenizer::new(&line);
         tokens.extend(tokenizer);
         if tokens.len() == 2318 {
-            //println!("num: {num}");
             println!("Line: {line:?}");
             println!(
                 "{:?}",
                 crate::tokenizer::tokens_as_string(&line, tokens.iter().cloned())
             );
         }
-        //let fingerprint = fingerprint(&tokens);
 
         preliminary_docs.insert(&tokens, &line, &mut term_hash_map);
-        //.entry(fingerprint)
-        //.or_insert_with(|| PrelimDocGroup::new(&tokens, &line, &mut term_hash_map));
-        //group.push(&tokens, &line, &mut term_hash_map);
         tokens.clear();
     }
 

@@ -1,7 +1,7 @@
 use super::doc_groups_hashmap::DocGroups as DocGroupsHashMap;
 use crate::{
     Token,
-    indexing::{PrelimDocGroup, doc_groups_hashmap::Fingerprint, termmap::IndexingTermmap},
+    indexing::{DocGroup, doc_groups_hashmap::Fingerprint, termmap::IndexingTermmap},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -49,7 +49,7 @@ impl DocGroups {
     }
 
     /// Immutable iterator over *(GroupId, &PrelimDocGroup)*.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (GroupId, &PrelimDocGroup)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (GroupId, &DocGroup)> {
         self.group_by_token_len
             .iter()
             .enumerate()
@@ -68,7 +68,7 @@ impl DocGroups {
 
     /// Mutable access via `GroupId` (linear scan in its bucket).
     #[inline]
-    pub(crate) fn get_mut(&mut self, id: GroupId) -> Option<&mut PrelimDocGroup> {
+    pub(crate) fn get_mut(&mut self, id: GroupId) -> Option<&mut DocGroup> {
         self.group_by_token_len
             .get_mut(id.num_tokens as usize)?
             .get_mut(id.id)
@@ -76,14 +76,14 @@ impl DocGroups {
 
     /// Shared access via `GroupId`.
     #[inline]
-    pub(crate) fn get(&self, id: GroupId) -> Option<&PrelimDocGroup> {
+    pub(crate) fn get(&self, id: GroupId) -> Option<&DocGroup> {
         self.group_by_token_len
             .get(id.num_tokens as usize)?
             .get(id.id)
     }
 
     /// Removes and returns the group identified by `id`, if present.
-    pub(crate) fn remove(&mut self, id: GroupId) -> Option<PrelimDocGroup> {
+    pub(crate) fn remove(&mut self, id: GroupId) -> Option<DocGroup> {
         if let Some(bucket) = self.group_by_token_len.get_mut(id.num_tokens as usize) {
             return bucket.remove(id.id);
         }
@@ -92,31 +92,21 @@ impl DocGroups {
 
     /// Iterator over all groups.
     #[inline]
-    pub(crate) fn values(&self) -> impl Iterator<Item = &PrelimDocGroup> {
+    pub(crate) fn values(&self) -> impl Iterator<Item = &DocGroup> {
         self.group_by_token_len.iter().flat_map(|b| b.values())
     }
 
     /// Mutable iterator over all groups.
     #[inline]
-    pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut PrelimDocGroup> {
+    pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut DocGroup> {
         self.group_by_token_len
             .iter_mut()
             .flat_map(|b| b.values_mut())
     }
 
-    pub(crate) fn insert_new_group(&mut self, group: PrelimDocGroup) {
+    pub(crate) fn insert_new_group(&mut self, group: DocGroup) {
         let len = group.template.tokens.len();
         self.ensure_bucket(len);
         self.group_by_token_len[len].insert_duplicate(group);
     }
-
-    //fn get_group_id(&mut self, num_tokens: usize) -> GroupId {
-    //self.ensure_bucket(num_tokens);
-    //let id = GroupId {
-    //num_tokens: num_tokens as u32,
-    //id: self.next_group_id,
-    //};
-    //self.next_group_id += 1;
-    //id
-    //}
 }

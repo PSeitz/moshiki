@@ -46,6 +46,8 @@ impl IndexWriter {
         }
         assign_template_ids(&mut preliminary_index);
         let term_id_idx = term_id_idx_to_template_ids(&preliminary_index);
+
+        // Write the dictionary and generate a mapping from old term IDs to new term IDs.
         let old_to_new_id_map = write_dictionary_and_generate_mapping(
             &self.output_folder.join(DICTIONARY_NAME),
             &preliminary_index.term_hash_map.regular,
