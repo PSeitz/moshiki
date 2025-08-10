@@ -105,10 +105,10 @@ impl IndexInner {
         let mut documents_ids_hit = Vec::new();
         for doc_id in columns.get_doc_ids(&match_fn) {
             documents_ids_hit.push(doc_id);
-            if let Some(max) = max_hits {
-                if documents_ids_hit.len() >= max {
-                    break;
-                }
+            if let Some(max) = max_hits
+                && documents_ids_hit.len() >= max
+            {
+                break;
             }
         }
 
