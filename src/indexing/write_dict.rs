@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use super::{SingleOrHashSet, termmap::TermStore};
+use super::{TemplateIdSet, termmap::TermStore};
 use tantivy_sstable::{
     SSTable,
     value::{ValueReader, ValueWriter},
@@ -13,7 +13,7 @@ use tantivy_sstable::{
 pub fn write_dictionary_and_generate_mapping(
     path: &Path,
     term_hash_map: impl TermStore,
-    term_id_to_template_id: &[SingleOrHashSet],
+    term_id_to_template_id: &[TemplateIdSet],
 ) -> io::Result<Vec<u32>> {
     let len = term_hash_map.num_terms();
     let mut sorted_terms: Vec<(&[u8], u32)> = Vec::with_capacity(len);

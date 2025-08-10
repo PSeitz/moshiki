@@ -429,44 +429,53 @@ pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> Pre
 }
 
 #[derive(Clone)]
-pub(crate) enum SingleOrHashSet {
+pub(crate) enum TemplateIdSet {
     Single(Option<u32>),
-    HashSet(FxHashSet<u32>),
+    // Same variant name, different inner type
+    HashSet(Vec<u32>),
 }
-impl Default for SingleOrHashSet {
+
+impl Default for TemplateIdSet {
     fn default() -> Self {
-        SingleOrHashSet::Single(None)
+        TemplateIdSet::Single(None)
     }
 }
-impl SingleOrHashSet {
+
+#[inline]
+fn push_unique(vec: &mut Vec<u32>, v: u32) {
+    if !vec.contains(&v) {
+        vec.push(v);
+    }
+}
+
+impl TemplateIdSet {
     fn insert(&mut self, template_id: u32) {
         match self {
-            SingleOrHashSet::Single(opt) => {
+            TemplateIdSet::Single(opt) => {
                 if let Some(existing) = opt {
                     if *existing != template_id {
-                        let mut set = FxHashSet::default();
-                        set.insert(*existing);
-                        set.insert(template_id);
-                        *self = SingleOrHashSet::HashSet(set);
+                        let v = vec![*existing, template_id];
+                        *self = TemplateIdSet::HashSet(v);
                     }
                 } else {
                     *opt = Some(template_id);
                 }
             }
-            SingleOrHashSet::HashSet(set) => {
-                set.insert(template_id);
+            TemplateIdSet::HashSet(v) => {
+                push_unique(v, template_id);
             }
         }
     }
-    pub fn copy_into_vec(&self, vec: &mut Vec<u32>) {
+
+    pub fn copy_into_vec(&self, out: &mut Vec<u32>) {
         match self {
-            SingleOrHashSet::Single(opt) => {
+            TemplateIdSet::Single(opt) => {
                 if let Some(id) = opt {
-                    vec.push(*id);
+                    out.push(*id);
                 }
             }
-            SingleOrHashSet::HashSet(set) => {
-                vec.extend(set.iter().copied());
+            TemplateIdSet::HashSet(v) => {
+                out.extend(v.iter().copied());
             }
         }
     }
@@ -475,13 +484,13 @@ impl SingleOrHashSet {
 /// Scan the columns and store in which templates a term ID is used
 ///
 /// We can use a vec for the term IDs, since they are guaranteed to be unique within a column.
-pub(crate) fn term_id_idx_to_template_ids(prelim_index: &PreliminaryIndex) -> Vec<SingleOrHashSet> {
+pub(crate) fn term_id_idx_to_template_ids(prelim_index: &PreliminaryIndex) -> Vec<TemplateIdSet> {
     let num_terms = prelim_index.term_hash_map.regular.num_terms();
     // Poor mans bitvec
     let mut marked_termids = vec![false; num_terms];
 
-    let mut term_id_to_templates: Vec<SingleOrHashSet> =
-        vec![SingleOrHashSet::default(); prelim_index.term_hash_map.regular.num_terms()];
+    let mut term_id_to_templates: Vec<TemplateIdSet> =
+        vec![TemplateIdSet::default(); prelim_index.term_hash_map.regular.num_terms()];
 
     for (template_id, group) in prelim_index.doc_groups.values().enumerate() {
         for column in group.iter_columns() {
