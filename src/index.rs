@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::columns::read::{Columns, decompress_column};
 use crate::dict::Dict;
 use crate::search::Searcher;
-use crate::templates::{TemplateWithMeta, read_templates};
+use crate::templates::{TemplateWithId, read_templates};
 use crate::{Doc, TemplateId};
 
 #[derive(Clone)]
@@ -43,14 +43,14 @@ pub struct IndexInner {
     pub(crate) templates: Templates,
 }
 pub(crate) struct Templates {
-    templates: Vec<TemplateWithMeta>,
+    templates: Vec<TemplateWithId>,
 }
 impl Templates {
-    pub fn get_template(&self, template_id: TemplateId) -> &TemplateWithMeta {
+    pub fn get_template(&self, template_id: TemplateId) -> &TemplateWithId {
         &self.templates[template_id.0 as usize]
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &TemplateWithMeta> {
+    pub fn iter(&self) -> impl Iterator<Item = &TemplateWithId> {
         self.templates.iter()
     }
 }

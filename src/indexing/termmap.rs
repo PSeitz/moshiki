@@ -87,15 +87,19 @@ impl RegularTermMap {
     /// This is VERY expensive, so use it only when necessary.
     /// We scan the dict.
     pub fn find_term_for_term_id(&self, term_id: u32) -> &[u8] {
-        self.map
-            .iter()
-            .find_map(|(bytes, id)| if id == term_id { Some(bytes) } else { None })
-            .unwrap_or_else(|| {
-                // If not found, we check the unique buffer
-                self.iter_unique()
-                    .find_map(|(bytes, id)| if id == term_id { Some(bytes) } else { None })
-                    .expect("Term ID not found in either map")
-            })
+        for (bytes, id) in self.map.iter() {
+            if id == term_id {
+                return bytes;
+            }
+        }
+        // If not found, we check the unique buffer
+        for (bytes, id) in self.iter_unique() {
+            if id == term_id {
+                return bytes;
+            }
+        }
+
+        panic!("Term ID not found in either map")
     }
 }
 

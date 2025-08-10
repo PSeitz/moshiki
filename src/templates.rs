@@ -17,7 +17,7 @@ pub enum MatchResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct TemplateWithMeta {
+pub struct TemplateWithId {
     pub num_docs: usize,
     pub template_id: TemplateId,
     pub template: Template,
@@ -28,7 +28,7 @@ pub struct Template {
     pub(crate) parts: Vec<TemplateToken>,
 }
 
-impl TemplateWithMeta {
+impl TemplateWithId {
     pub(crate) fn num_docs(&self) -> usize {
         self.num_docs
     }
@@ -92,9 +92,9 @@ impl Template {
         match_result
     }
 }
-impl From<&IndexingTemplate> for TemplateWithMeta {
+impl From<&IndexingTemplate> for TemplateWithId {
     fn from(template: &IndexingTemplate) -> Self {
-        TemplateWithMeta {
+        TemplateWithId {
             num_docs: template.num_docs,
             template_id: template.template_id,
             template: Template {
@@ -151,8 +151,8 @@ impl From<&IndexingTemplateToken> for TemplateToken {
 pub fn write_templates(index: &PreliminaryIndex, folder: &Path) -> io::Result<()> {
     let path = folder.join(TEMPLATE_FILE_NAME);
     let mut writer = BufWriter::new(File::create(path)?);
-    let templates_only: Vec<TemplateWithMeta> =
-        index.iter_templates().map(TemplateWithMeta::from).collect();
+    let templates_only: Vec<TemplateWithId> =
+        index.iter_templates().map(TemplateWithId::from).collect();
     let bytes: Vec<u8> = postcard::to_allocvec(&templates_only).map_err(io::Error::other)?;
     writer.write_all(&bytes)?;
     writer.flush()?;
@@ -161,7 +161,7 @@ pub fn write_templates(index: &PreliminaryIndex, folder: &Path) -> io::Result<()
         let path = folder.join(TEMPLATE_DEBUG_FILE_NAME);
         let mut writer = BufWriter::new(File::create(path)?);
         for template in index.iter_templates() {
-            let template = TemplateWithMeta::from(template);
+            let template = TemplateWithId::from(template);
             let template = template.template;
             writer.write_all(template.ser_readable().as_bytes())?;
             writer.write_all(b"\n")?;
@@ -169,7 +169,7 @@ pub fn write_templates(index: &PreliminaryIndex, folder: &Path) -> io::Result<()
     }
     Ok(())
 }
-pub fn read_templates(folder: &Path) -> io::Result<Vec<TemplateWithMeta>> {
+pub fn read_templates(folder: &Path) -> io::Result<Vec<TemplateWithId>> {
     let path = folder.join(TEMPLATE_FILE_NAME);
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
