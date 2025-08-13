@@ -7,6 +7,8 @@ use crate::TemplateId;
 
 use super::get_template_path;
 
+// Note: uncompressed size computation moved to IndexInner
+
 /// A column of data, containing a list of term IDs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Column {
@@ -26,6 +28,11 @@ impl Column {
     fn iter(&self) -> impl Iterator<Item = u32> + '_ {
         self.data.iter().copied()
     }
+
+    /// Returns the number of term IDs (documents) in this column.
+    pub(crate) fn len(&self) -> usize {
+        self.data.len()
+    }
 }
 
 /// A collection of columns.
@@ -42,6 +49,13 @@ impl Columns {
     /// Returns an iterator over the columns.
     fn iter_columns(&self) -> impl Iterator<Item = &Column> {
         self.data.iter()
+    }
+
+    /// Returns the uncompressed size in bytes of all columns combined.
+    /// Assumes each term ID is a 4-byte little-endian `u32`.
+    pub(crate) fn size_in_bytes(&self) -> u64 {
+        let total_terms: u64 = self.data.iter().map(|c| c.len() as u64).sum();
+        total_terms * 4u64
     }
     /// Returns an iterator over the term IDs for a given document ID.
     pub(crate) fn get_term_ids(&self, doc: u32) -> impl Iterator<Item = u32> + '_ {

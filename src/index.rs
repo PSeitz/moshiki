@@ -121,4 +121,16 @@ impl IndexInner {
         }
         Ok(all_documents)
     }
+
+    /// Compute total uncompressed bytes of all column files by reusing column
+    /// opening via `decompress_column` and summing the decompressed values.
+    pub fn uncompressed_columns_size(&self) -> io::Result<u64> {
+        let mut total: u64 = 0;
+        for tpl in self.templates.iter() {
+            let num_docs = tpl.num_docs();
+            let columns: Columns = decompress_column(&self.folder, tpl.template_id, num_docs)?;
+            total += columns.size_in_bytes();
+        }
+        Ok(total)
+    }
 }

@@ -147,17 +147,16 @@ pub fn move_term_id_to_new_group(
             column_index: col_idx,
             is_id_like: _,
         } = &mut token.token
-            && *col_idx == column_index {
-                // Convert the variable to a constant
-                let text = term_hash_map
-                    .regular
-                    .find_term_for_term_id(term_id)
-                    .to_vec();
-                token.token = IndexingTemplateToken::Constant(ConstTemplateToken::new(
-                    *token_type,
-                    text.clone(),
-                ));
-            }
+            && *col_idx == column_index
+        {
+            // Convert the variable to a constant
+            let text = term_hash_map
+                .regular
+                .find_term_for_term_id(term_id)
+                .to_vec();
+            token.token =
+                IndexingTemplateToken::Constant(ConstTemplateToken::new(*token_type, text.clone()));
+        }
     }
     // Remove the column from the new group
     new_group.columns.remove(column_index);
@@ -168,9 +167,10 @@ pub fn move_term_id_to_new_group(
             column_index: col_idx,
             ..
         } = &mut token.token
-            && *col_idx > column_index {
-                *col_idx -= 1;
-            }
+            && *col_idx > column_index
+        {
+            *col_idx -= 1;
+        }
     }
 
     new_group

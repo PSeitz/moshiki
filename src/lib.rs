@@ -3,7 +3,7 @@
 //! It provides functionality for indexing, searching, and managing log data.
 
 /// For handling columns of data
-pub(crate) mod columns;
+pub mod columns;
 pub mod constants;
 /// For dictionary-related operations
 pub(crate) mod dict;

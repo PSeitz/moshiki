@@ -18,6 +18,7 @@ struct Report {
     throughput: f64,
     input_size: u64,
     output_size: u64,
+    uncompressed_cols_size: u64,
     zstd_compressed_size: u64,
     dictionary_size: u64,
 }
@@ -34,6 +35,9 @@ impl Report {
     }
     fn output_size_mb(&self) -> f64 {
         self.output_size as f64 / 1024.0 / 1024.0
+    }
+    fn uncompressed_cols_size_mb(&self) -> f64 {
+        self.uncompressed_cols_size as f64 / 1024.0 / 1024.0
     }
     fn dictionary_size_mb(&self) -> f64 {
         self.dictionary_size as f64 / 1024.0 / 1024.0
@@ -95,14 +99,15 @@ fn print_reports(reports: &[Report]) {
 
     // Header row
     println!(
-        "{:<name_width$}  {:<12} {:<12} {:<12} {:<12} {:<12} {:<15}",
-        "Dataset",     // first column
-        "Throughput",  // 12 chars
-        "Input (MB)",  // 12 chars
-        "Output (MB)", // 12 chars
-        "Comp Ratio",  // 12 chars
-        "Zstd (MB)",   // 12 chars
-        "Dict (MB)",   // 15 chars
+        "{:<name_width$}  {:<12} {:<12} {:<12} {:<16} {:<12} {:<12} {:<15}",
+        "Dataset",          // first column
+        "Throughput",       // 12 chars
+        "Input (MB)",       // 12 chars
+        "Output (MB)",      // 12 chars
+        "Raw Columns (MB)", // 16 chars
+        "Comp Ratio",       // 12 chars
+        "Zstd (MB)",        // 12 chars
+        "Dict (MB)",        // 15 chars
         name_width = name_width
     );
 
@@ -113,10 +118,11 @@ fn print_reports(reports: &[Report]) {
         let input_mb = r.input_size_mb();
         let output_mb = r.output_size_mb();
         let ratio = r.compression_ratio();
+        let uncomp_mb = r.uncompressed_cols_size_mb();
         let zstd_size = r.zstd_compressed_size_mb();
         let dict_size = r.dictionary_size_mb();
         println!(
-            "{file_name:<name_width$}  {throughput:<12.2} {input_mb:<12.2} {output_mb:<12.2} {ratio:<12.0} {zstd_size:<12.2} {dict_size:<15.2}"
+            "{file_name:<name_width$}  {throughput:<12.2} {input_mb:<12.2} {output_mb:<12.2} {uncomp_mb:<16.2} {ratio:<12.0} {zstd_size:<12.2} {dict_size:<15.2}"
         );
     }
 }
@@ -156,6 +162,10 @@ fn generate_report(ndjson_files: &[String], output_folder: &str) -> io::Result<(
             .map(|md| md.len())
             .unwrap_or(0);
 
+        // Open the index to compute the uncompressed size of all columns.
+        let index = Index::new(output_folder.to_str().unwrap())?;
+        let uncompressed_cols_size: u64 = index.uncompressed_columns_size()?;
+
         reports.push(Report {
             file_name: Path::new(ndjson_file)
                 .file_name()
@@ -164,6 +174,7 @@ fn generate_report(ndjson_files: &[String], output_folder: &str) -> io::Result<(
                 .to_string(),
             throughput: (file_size as f64 / 1024.0 / 1024.0) / start_time.elapsed().as_secs_f64(),
             input_size: file_size,
+            uncompressed_cols_size,
             zstd_compressed_size: zstd_compressed_size(ndjson_file)?,
             output_size: folder_size(output_folder)?,
             dictionary_size: dict_size,
