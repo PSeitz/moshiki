@@ -82,7 +82,7 @@ pub(crate) fn tokens_as_string(input: &str, tokens: impl Iterator<Item = Token>)
 /// The Tokenizer implements `Iterator` and can be used to tokenize a string into `Token` objects.
 pub struct Tokenizer<'a> {
     input: &'a str,
-    pos: u32,
+    pos: usize,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -109,11 +109,11 @@ impl<'a> Iterator for Tokenizer<'a> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // end-of-input
-        if self.pos as usize >= self.input.len() {
+        if self.pos >= self.input.len() {
             return None;
         }
 
-        let bytes = &self.input.as_bytes()[self.pos as usize..];
+        let bytes = &self.input.as_bytes()[self.pos..];
 
         // 1) Whitespace
         #[cfg(feature = "whitespace")]
@@ -132,7 +132,7 @@ impl<'a> Iterator for Tokenizer<'a> {
             let len = bytes
                 .iter()
                 .take_while(|&&b| PUNCTUATION_LOOKUP_TABLE[b as usize])
-                .count() as u32;
+                .count();
             let start = self.pos;
             self.pos += len;
             return Some(Token::Punctuation(start..self.pos));
@@ -162,7 +162,7 @@ impl<'a> Iterator for Tokenizer<'a> {
 
         // build the token (or fallback to a “word” of length word_len)
         let token = if let Some((kind, num_bytes)) = choice {
-            self.pos += num_bytes as u32;
+            self.pos += num_bytes;
             match kind {
                 Kind::IPv4 => Token::IPv4(start..self.pos),
                 Kind::Number => Token::Number(Number::new(self.input, start..self.pos)),
@@ -171,7 +171,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                 Kind::Uuid => Token::Uuid(start..self.pos),
             }
         } else {
-            let len = word_len(bytes) as u32;
+            let len = word_len(bytes);
             self.pos += len;
             Token::Word(start..self.pos)
         };

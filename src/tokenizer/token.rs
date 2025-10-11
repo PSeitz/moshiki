@@ -7,15 +7,15 @@ use super::Number;
 #[derive(Debug, Clone)]
 pub enum Token {
     /// IPv4 address
-    IPv4(Range<u32>),
+    IPv4(Range<usize>),
     /// Number
     Number(Number), // u64 little endian representation
     /// UUID
-    Uuid(Range<u32>),
+    Uuid(Range<usize>),
     /// The default token
-    Word(Range<u32>),
+    Word(Range<usize>),
     /// Punctuation token
-    Punctuation(Range<u32>),
+    Punctuation(Range<usize>),
     #[cfg(feature = "whitespace")]
     Whitespace(u32),
 }
@@ -127,7 +127,7 @@ impl Token {
     pub(crate) fn to_string(&self, input: &str) -> String {
         match self {
             Token::Word(r) | Token::IPv4(r) | Token::Uuid(r) | Token::Punctuation(r) => {
-                input[r.start as usize..r.end as usize].to_string()
+                input[r.start..r.end].to_string()
             }
             #[cfg(feature = "whitespace")]
             Token::Whitespace(num) => " ".repeat(*num as usize),
@@ -139,7 +139,7 @@ impl Token {
     pub(crate) fn as_bytes<'a>(&'a self, input: &'a str) -> Option<&'a [u8]> {
         match self {
             Token::Word(r) | Token::IPv4(r) | Token::Uuid(r) | Token::Punctuation(r) => {
-                Some(&input.as_bytes()[r.start as usize..r.end as usize])
+                Some(&input.as_bytes()[r.start..r.end])
             }
             Token::Number(n) => Some(n.as_bytes(input)),
             // White is ignored for now
