@@ -1,10 +1,10 @@
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
-use crate::TemplateId;
-use crate::indexing::DocGroups;
 use crate::indexing::termmap::TermStore;
+use crate::indexing::DocGroups;
 use crate::tokenizer::{Token, TokenType, TokenTypeTrait, Tokenizer};
+use crate::TemplateId;
 use stacker::fastcmp::fast_short_slice_compare;
 
 use super::termmap::IndexingTermmap;
@@ -191,7 +191,7 @@ fn get_term_id(
 ) -> u32 {
     match token {
         Token::IPv4(v) | Token::Uuid(v) | Token::Word(v) | Token::Punctuation(v) => {
-            let term_slice = &line.as_bytes()[v.start as usize..v.end as usize];
+            let term_slice = &line.as_bytes()[v.start..v.end];
             term_hash_map.mutate_or_create(term_slice, is_id_like)
         }
         #[cfg(feature = "whitespace")]
