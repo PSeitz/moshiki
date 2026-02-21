@@ -136,8 +136,9 @@ impl SchemaTree {
 
     /// Parse JSON and return its SchemaId, de-duplicating leaf ids in the tree.
     pub fn ingest_json(&mut self, json: &str) -> Result<SchemaId, SchemaError> {
-        let owned = OwnedValue::from_str(json)?;
-        self.ingest_value(owned.get_value())
+        let value: serde_json_borrow::Value = serde_json::from_str(json)
+            .map_err(|err| SchemaError::Parse(io::Error::new(io::ErrorKind::InvalidData, err)))?;
+        self.ingest_value(&value)
     }
 
     /// Parse JSON and return its SchemaId, invoking a callback for each leaf.
