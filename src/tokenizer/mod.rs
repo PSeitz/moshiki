@@ -16,7 +16,7 @@ const WORD_DELIMITER_LOOKUP_TABLE: [bool; 256] = {
     while i < 256 {
         let b = i as u8;
         if b.is_ascii_whitespace()
-            || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_')
+            || (b.is_ascii_punctuation() && b != b'.' && b != b'-' && b != b'_' && b != b'%')
         {
             lookup[i] = true;
         }
@@ -41,7 +41,9 @@ const PUNCTUATION_LOOKUP_TABLE: [bool; 256] = {
     let mut lookup = [false; 256];
     let mut i = 0;
     while i < 256 {
-        if (i as u8).is_ascii_punctuation() || (i as u8).is_ascii_whitespace() {
+        if ((i as u8).is_ascii_punctuation() || (i as u8).is_ascii_whitespace())
+            && (i as u8) != b'%'
+        {
             lookup[i] = true;
         }
         i += 1;

@@ -1,10 +1,10 @@
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
-use crate::TemplateId;
-use crate::indexing::DocGroups;
 use crate::indexing::termmap::TermStore;
+use crate::indexing::DocGroups;
 use crate::tokenizer::{Token, TokenType, TokenTypeTrait, Tokenizer};
+use crate::TemplateId;
 use stacker::fastcmp::fast_short_slice_compare;
 
 use super::termmap::IndexingTermmap;
