@@ -1,9 +1,11 @@
 //! Schema tree for JSON leaf de-duplication.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::io;
 
 use fxhash::FxHashMap;
+use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde_json_borrow::{OwnedValue, Value};
 
 /// A unique identifier for a leaf in the schema tree.
@@ -29,7 +31,10 @@ impl SchemaId {
 
     /// Reconstruct leaf infos for this schema id from the given tree.
     pub fn reconstruct<'a>(&self, tree: &'a SchemaTree) -> Vec<&'a LeafInfo> {
-        self.0.iter().filter_map(|id| tree.leaf_info(*id)).collect()
+        self.0
+            .iter()
+            .map(|leaf_id| tree.leaf_info(*leaf_id))
+            .collect()
     }
 }
 
@@ -134,9 +139,21 @@ impl SchemaTree {
 
     /// Parse JSON and return its SchemaId, de-duplicating leaf ids in the tree.
     pub fn ingest_json(&mut self, json: &str) -> Result<SchemaId, SchemaError> {
-        let value: serde_json_borrow::Value = serde_json::from_str(json)
-            .map_err(|err| SchemaError::Parse(io::Error::new(io::ErrorKind::InvalidData, err)))?;
-        self.ingest_value(&value)
+        let mut leaf_ids = Vec::with_capacity(32);
+        let mut deserializer = serde_json::Deserializer::from_str(json);
+        let is_object_root = RootSeed {
+            tree: self,
+            out: &mut leaf_ids,
+        }
+        .deserialize(&mut deserializer)
+        .map_err(Self::parse_error)?;
+        deserializer.end().map_err(Self::parse_error)?;
+
+        if !is_object_root {
+            return Err(SchemaError::RootNotObject);
+        }
+
+        Ok(SchemaId::new(leaf_ids))
     }
 
     /// Parse JSON and return its SchemaId, invoking a callback for each leaf.
@@ -179,8 +196,8 @@ impl SchemaTree {
     }
 
     /// Lookup leaf information for a given leaf id.
-    pub fn leaf_info(&self, id: LeafId) -> Option<&LeafInfo> {
-        self.leaves.get(id.0 as usize)
+    pub fn leaf_info(&self, id: LeafId) -> &LeafInfo {
+        &self.leaves[id.0 as usize]
     }
 
     /// Return the number of unique leaves tracked by the schema tree.
@@ -267,6 +284,245 @@ impl SchemaTree {
         });
         id
     }
+
+    fn parse_error(err: serde_json::Error) -> SchemaError {
+        SchemaError::Parse(io::Error::new(io::ErrorKind::InvalidData, err))
+    }
+}
+
+struct RootSeed<'a> {
+    tree: &'a mut SchemaTree,
+    out: &'a mut Vec<LeafId>,
+}
+
+impl<'de> DeserializeSeed<'de> for RootSeed<'_> {
+    type Value = bool;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(RootVisitor {
+            tree: self.tree,
+            out: self.out,
+        })
+    }
+}
+
+struct RootVisitor<'a> {
+    tree: &'a mut SchemaTree,
+    out: &'a mut Vec<LeafId>,
+}
+
+impl<'de> Visitor<'de> for RootVisitor<'_> {
+    type Value = bool;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a JSON value")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        parse_object_entries(&mut map, self.tree, ROOT_NODE_ID, self.out)?;
+        Ok(true)
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        while seq.next_element::<IgnoredAny>()?.is_some() {}
+        Ok(false)
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(false)
+    }
+
+    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(false)
+    }
+
+    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(false)
+    }
+
+    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(false)
+    }
+
+    fn visit_str<E>(self, _: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(false)
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(false)
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(false)
+    }
+}
+
+struct ValueSeed<'a, 'k> {
+    tree: &'a mut SchemaTree,
+    node_id: NodeId,
+    key: &'k str,
+    out: &'a mut Vec<LeafId>,
+}
+
+impl<'de> DeserializeSeed<'de> for ValueSeed<'_, '_> {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(ValueVisitor {
+            tree: self.tree,
+            node_id: self.node_id,
+            key: self.key,
+            out: self.out,
+        })
+    }
+}
+
+struct ValueVisitor<'a, 'k> {
+    tree: &'a mut SchemaTree,
+    node_id: NodeId,
+    key: &'k str,
+    out: &'a mut Vec<LeafId>,
+}
+
+impl<'de> Visitor<'de> for ValueVisitor<'_, '_> {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a JSON value")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        parse_object_entries(&mut map, self.tree, self.node_id, self.out)
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        self.emit_leaf(LeafKind::Array);
+        while seq.next_element::<IgnoredAny>()?.is_some() {}
+        Ok(())
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.emit_leaf(LeafKind::Bool);
+        Ok(())
+    }
+
+    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.emit_leaf(LeafKind::Number);
+        Ok(())
+    }
+
+    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.emit_leaf(LeafKind::Number);
+        Ok(())
+    }
+
+    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.emit_leaf(LeafKind::Number);
+        Ok(())
+    }
+
+    fn visit_str<E>(self, _: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.emit_leaf(LeafKind::String);
+        Ok(())
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.emit_leaf(LeafKind::Null);
+        Ok(())
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.emit_leaf(LeafKind::Null);
+        Ok(())
+    }
+}
+
+impl ValueVisitor<'_, '_> {
+    fn emit_leaf(self, kind: LeafKind) {
+        let id = self.tree.intern_leaf(self.node_id, self.key, kind);
+        self.out.push(id);
+    }
+}
+
+fn parse_object_entries<'de, A>(
+    map: &mut A,
+    tree: &mut SchemaTree,
+    node_id: NodeId,
+    out: &mut Vec<LeafId>,
+) -> Result<(), A::Error>
+where
+    A: MapAccess<'de>,
+{
+    while let Some(key) = map.next_key::<Cow<'de, str>>()? {
+        let child_id = tree.get_or_create_child(node_id, key.as_ref());
+        map.next_value_seed(ValueSeed {
+            tree,
+            node_id: child_id,
+            key: key.as_ref(),
+            out,
+        })?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -301,6 +557,13 @@ mod tests {
     }
 
     #[test]
+    fn malformed_json_returns_parse_error() {
+        let mut tree = SchemaTree::new();
+        let err = tree.ingest_json("tru").unwrap_err();
+        assert!(matches!(err, SchemaError::Parse(_)));
+    }
+
+    #[test]
     fn callback_reports_leaf_values() {
         let mut tree = SchemaTree::new();
         let mut seen = Vec::new();
@@ -319,7 +582,8 @@ mod tests {
     fn reconstructs_leaf_key() {
         let mut tree = SchemaTree::new();
         let schema_id = tree.ingest_json(r#"{"a": {"b": 1}}"#).unwrap();
-        let leaf_info = tree.leaf_info(schema_id.leaf_ids()[0]).unwrap();
+        let leaf_infos = schema_id.reconstruct(&tree);
+        let leaf_info = leaf_infos[0];
 
         assert_eq!(leaf_info.key, "b");
     }
