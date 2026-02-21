@@ -6,7 +6,7 @@ use std::io;
 use fxhash::FxHashMap;
 use serde_json_borrow::{OwnedValue, Value};
 
-/// A unique identifier for a leaf (path + kind) in the schema tree.
+/// A unique identifier for a leaf in the schema tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LeafId(pub u32);
 
@@ -67,8 +67,8 @@ impl LeafKind {
 /// Information about a leaf in the schema tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeafInfo {
-    /// The JSON path from the root object to the leaf.
-    pub path: Vec<String>,
+    /// The leaf key (last segment of the JSON path).
+    pub key: String,
     /// The kind of the leaf value.
     pub kind: LeafKind,
 }
@@ -106,8 +106,6 @@ const ROOT_NODE_ID: NodeId = NodeId(0);
 
 #[derive(Debug, Default)]
 struct SchemaNode {
-    parent: Option<NodeId>,
-    segment: String,
     children: FxHashMap<String, NodeId>,
     leaves: [Option<LeafId>; LeafKind::COUNT],
 }
@@ -153,6 +151,7 @@ impl SchemaTree {
     /// Ingest a parsed JSON value and return its SchemaId.
     ///
     /// The root value must be an object.
+    #[inline]
     pub fn ingest_value(&mut self, value: &Value) -> Result<SchemaId, SchemaError> {
         self.ingest_value_with(value, |_, _| {})
     }
@@ -160,6 +159,7 @@ impl SchemaTree {
     /// Ingest a parsed JSON value and return its SchemaId, invoking a callback for each leaf.
     ///
     /// The callback receives the leaf id and the original value at that leaf.
+    #[inline]
     pub fn ingest_value_with<F>(
         &mut self,
         value: &Value,
@@ -199,7 +199,7 @@ impl SchemaTree {
     {
         for (key, value) in obj.iter() {
             let child_id = self.get_or_create_child(node_id, key);
-            self.walk_value(value, child_id, out, on_leaf);
+            self.walk_value(value, child_id, key, out, on_leaf);
         }
     }
 
@@ -207,6 +207,7 @@ impl SchemaTree {
         &mut self,
         value: &Value,
         node_id: NodeId,
+        key: &str,
         out: &mut Vec<LeafId>,
         on_leaf: &mut F,
     ) where
@@ -214,17 +215,18 @@ impl SchemaTree {
     {
         match value {
             Value::Object(obj) => self.walk_object(obj, node_id, out, on_leaf),
-            Value::Array(_) => self.emit_leaf(node_id, LeafKind::Array, value, out, on_leaf),
-            Value::Null => self.emit_leaf(node_id, LeafKind::Null, value, out, on_leaf),
-            Value::Bool(_) => self.emit_leaf(node_id, LeafKind::Bool, value, out, on_leaf),
-            Value::Number(_) => self.emit_leaf(node_id, LeafKind::Number, value, out, on_leaf),
-            Value::Str(_) => self.emit_leaf(node_id, LeafKind::String, value, out, on_leaf),
+            Value::Array(_) => self.emit_leaf(node_id, key, LeafKind::Array, value, out, on_leaf),
+            Value::Null => self.emit_leaf(node_id, key, LeafKind::Null, value, out, on_leaf),
+            Value::Bool(_) => self.emit_leaf(node_id, key, LeafKind::Bool, value, out, on_leaf),
+            Value::Number(_) => self.emit_leaf(node_id, key, LeafKind::Number, value, out, on_leaf),
+            Value::Str(_) => self.emit_leaf(node_id, key, LeafKind::String, value, out, on_leaf),
         }
     }
 
     fn emit_leaf<F>(
         &mut self,
         node_id: NodeId,
+        key: &str,
         kind: LeafKind,
         value: &Value,
         out: &mut Vec<LeafId>,
@@ -232,45 +234,26 @@ impl SchemaTree {
     ) where
         F: FnMut(LeafId, &Value),
     {
-        let id = self.intern_leaf(node_id, kind);
+        let id = self.intern_leaf(node_id, key, kind);
         out.push(id);
         on_leaf(id, value);
     }
 
     fn get_or_create_child(&mut self, parent_id: NodeId, key: &str) -> NodeId {
         let parent_index = parent_id.0 as usize;
-        if let Some(&child_id) = self.nodes[parent_index].children.get(key) {
-            return child_id;
+        if let Some(child_id) = self.nodes[parent_index].children.get(key) {
+            return *child_id;
         }
 
         let child_id = NodeId(self.nodes.len() as u32);
-        let segment = key.to_string();
-        self.nodes.push(SchemaNode {
-            parent: Some(parent_id),
-            segment: segment.clone(),
-            ..Default::default()
-        });
-        self.nodes[parent_index].children.insert(segment, child_id);
+        self.nodes.push(SchemaNode::default());
+        self.nodes[parent_index]
+            .children
+            .insert(key.to_string(), child_id);
         child_id
     }
 
-    fn node_path(&self, mut node_id: NodeId) -> Vec<String> {
-        let mut path_rev = Vec::new();
-        loop {
-            let node = &self.nodes[node_id.0 as usize];
-            if !node.segment.is_empty() {
-                path_rev.push(node.segment.clone());
-            }
-            match node.parent {
-                Some(parent_id) => node_id = parent_id,
-                None => break,
-            }
-        }
-        path_rev.reverse();
-        path_rev
-    }
-
-    fn intern_leaf(&mut self, node_id: NodeId, kind: LeafKind) -> LeafId {
+    fn intern_leaf(&mut self, node_id: NodeId, key: &str, kind: LeafKind) -> LeafId {
         let node_index = node_id.0 as usize;
         if let Some(existing) = self.nodes[node_index].leaves[kind.index()] {
             return existing;
@@ -279,7 +262,7 @@ impl SchemaTree {
         let id = LeafId(self.leaves.len() as u32);
         self.nodes[node_index].leaves[kind.index()] = Some(id);
         self.leaves.push(LeafInfo {
-            path: self.node_path(node_id),
+            key: key.to_string(),
             kind,
         });
         id
@@ -333,11 +316,11 @@ mod tests {
     }
 
     #[test]
-    fn reconstructs_leaf_path() {
+    fn reconstructs_leaf_key() {
         let mut tree = SchemaTree::new();
         let schema_id = tree.ingest_json(r#"{"a": {"b": 1}}"#).unwrap();
         let leaf_info = tree.leaf_info(schema_id.leaf_ids()[0]).unwrap();
 
-        assert_eq!(leaf_info.path, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(leaf_info.key, "b");
     }
 }
