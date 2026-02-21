@@ -365,6 +365,7 @@ dependencies = [
  "postcard",
  "serde",
  "serde_json",
+ "serde_json_borrow",
  "tantivy-common",
  "tantivy-sstable",
  "tantivy-stacker",
@@ -633,6 +634,16 @@ dependencies = [
  "memchr",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_json_borrow"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a60291362be3646d15fb0b5a5bddfd8003ebf013b2186a3c60a534fd35d6a26"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -13,6 +13,8 @@ pub mod indexing;
 
 /// The main entry point for the index and searcher
 pub mod index;
+/// For JSON schema de-duplication
+pub mod schema;
 /// For searching the index
 pub mod search;
 /// For handling templates

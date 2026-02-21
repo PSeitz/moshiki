@@ -16,6 +16,7 @@ tantivy-sstable = "0.5.0"
 zstd = "0.13.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_json_borrow = "0.5.1"
 postcard =  { version = "1.1.2", features = ["alloc"] }
 tikv-jemallocator = "0.6.0"
 
@@ -28,6 +29,10 @@ harness = false
 
 [[bench]]
 name = "bench_indexing"
+harness = false
+
+[[bench]]
+name = "bench_schema"
 harness = false
 
 [features]
@@ -44,4 +49,3 @@ whitespace = []
 debug = true
 [profile.release]
 debug = true
-
