@@ -14,12 +14,12 @@ pub struct GroupId {
 /// `DocGroups` bucketed by token length
 ///
 #[derive(Debug, Default, Clone)]
-pub struct DocGroups {
+pub struct DocGroupsByLen {
     /// Buckets keyed by `tokens.len()`.
     group_by_token_len: Vec<DocGroupsHashMap>,
 }
 
-impl DocGroups {
+impl DocGroupsByLen {
     /// Ensures the bucket for `token_len` exists.
     #[inline]
     fn ensure_bucket(&mut self, token_len: usize) {

@@ -2,7 +2,7 @@ use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::TemplateId;
-use crate::indexing::DocGroups;
+use crate::indexing::DocGroupsByLen;
 use crate::indexing::termmap::TermStore;
 use crate::tokenizer::{Token, TokenType, TokenTypeTrait, Tokenizer};
 use stacker::fastcmp::fast_short_slice_compare;
@@ -83,7 +83,7 @@ impl IndexingTemplateToken {
 pub struct PreliminaryIndex {
     pub(crate) term_hash_map: IndexingTermmap,
     /// Document groups, keyed by the token length.
-    pub doc_groups: DocGroups,
+    pub doc_groups: DocGroupsByLen,
 }
 impl PreliminaryIndex {
     pub(crate) fn iter_templates(&self) -> impl Iterator<Item = &IndexingTemplate> {
@@ -403,7 +403,7 @@ pub fn check_is_id_like(column: &[u32]) -> bool {
 /// Create a preliminary index from log lines
 pub fn preliminary_index<T: Into<String>>(lines: impl Iterator<Item = T>) -> PreliminaryIndex {
     let mut term_hash_map = IndexingTermmap::default();
-    let mut preliminary_docs = DocGroups::default();
+    let mut preliminary_docs = DocGroupsByLen::default();
 
     let mut tokens = Vec::new();
     for line in lines {
