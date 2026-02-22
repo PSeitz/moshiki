@@ -8,7 +8,7 @@ use fxhash::FxHashMap;
 use serde::Deserialize;
 use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use serde_json_borrow::{OwnedValue, Value};
+use serde_json_borrow::Value;
 
 /// A unique identifier for a leaf in the schema tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -186,23 +186,7 @@ impl SchemaTree {
 
     /// Parse JSON and return its SchemaId, de-duplicating leaf ids in the tree.
     pub fn ingest_json(&mut self, json: &str) -> Result<SchemaId, SchemaError> {
-        let mut leaf_ids = Vec::with_capacity(32);
-        let mut deserializer = serde_json::Deserializer::from_str(json);
-        let object_parse_result = ObjectSeed {
-            tree: self,
-            node_id: ROOT_NODE_ID,
-            out: &mut leaf_ids,
-        }
-        .deserialize(&mut deserializer);
-        if object_parse_result.is_ok() {
-            deserializer.end().map_err(Self::parse_error)?;
-            return Ok(SchemaId::new(leaf_ids));
-        }
-
-        let mut non_object_deserializer = serde_json::Deserializer::from_str(json);
-        IgnoredAny::deserialize(&mut non_object_deserializer).map_err(Self::parse_error)?;
-        non_object_deserializer.end().map_err(Self::parse_error)?;
-        Err(SchemaError::RootNotObject)
+        self.ingest_json_with(json, |_, _| {})
     }
 
     /// Parse JSON and return its SchemaId, invoking a callback for each leaf.
@@ -214,15 +198,24 @@ impl SchemaTree {
     where
         F: FnMut(LeafId, &Value),
     {
-        let owned = OwnedValue::from_str(json)?;
-        match owned.get_value() {
-            Value::Object(obj) => {
-                let mut leaf_ids = Vec::with_capacity(32);
-                self.walk_object(obj, ROOT_NODE_ID, &mut leaf_ids, &mut on_leaf);
-                Ok(SchemaId::new(leaf_ids))
-            }
-            _ => Err(SchemaError::RootNotObject),
+        let mut leaf_ids = Vec::with_capacity(32);
+        let mut deserializer = serde_json::Deserializer::from_str(json);
+        let object_parse_result = ObjectSeedWithCallback {
+            tree: self,
+            node_id: ROOT_NODE_ID,
+            out: &mut leaf_ids,
+            on_leaf: &mut on_leaf,
         }
+        .deserialize(&mut deserializer);
+        if object_parse_result.is_ok() {
+            deserializer.end().map_err(Self::parse_error)?;
+            return Ok(SchemaId::new(leaf_ids));
+        }
+
+        let mut non_object_deserializer = serde_json::Deserializer::from_str(json);
+        IgnoredAny::deserialize(&mut non_object_deserializer).map_err(Self::parse_error)?;
+        non_object_deserializer.end().map_err(Self::parse_error)?;
+        Err(SchemaError::RootNotObject)
     }
 
     /// Lookup leaf information for a given leaf id.
@@ -315,57 +308,6 @@ impl SchemaTree {
         children
     }
 
-    fn walk_object<F>(
-        &mut self,
-        obj: &serde_json_borrow::ObjectAsVec<'_>,
-        node_id: NodeId,
-        out: &mut Vec<LeafId>,
-        on_leaf: &mut F,
-    ) where
-        F: FnMut(LeafId, &Value),
-    {
-        for (key, value) in obj.iter() {
-            let child_id = self.get_or_create_child(node_id, key);
-            self.walk_value(value, child_id, key, out, on_leaf);
-        }
-    }
-
-    fn walk_value<F>(
-        &mut self,
-        value: &Value,
-        node_id: NodeId,
-        key: &str,
-        out: &mut Vec<LeafId>,
-        on_leaf: &mut F,
-    ) where
-        F: FnMut(LeafId, &Value),
-    {
-        match value {
-            Value::Object(obj) => self.walk_object(obj, node_id, out, on_leaf),
-            Value::Array(_) => self.emit_leaf(node_id, key, LeafKind::Array, value, out, on_leaf),
-            Value::Null => self.emit_leaf(node_id, key, LeafKind::Null, value, out, on_leaf),
-            Value::Bool(_) => self.emit_leaf(node_id, key, LeafKind::Bool, value, out, on_leaf),
-            Value::Number(_) => self.emit_leaf(node_id, key, LeafKind::Number, value, out, on_leaf),
-            Value::Str(_) => self.emit_leaf(node_id, key, LeafKind::String, value, out, on_leaf),
-        }
-    }
-
-    fn emit_leaf<F>(
-        &mut self,
-        node_id: NodeId,
-        key: &str,
-        kind: LeafKind,
-        value: &Value,
-        out: &mut Vec<LeafId>,
-        on_leaf: &mut F,
-    ) where
-        F: FnMut(LeafId, &Value),
-    {
-        let id = self.intern_leaf(node_id, key, kind);
-        out.push(id);
-        on_leaf(id, value);
-    }
-
     fn get_or_create_child(&mut self, parent_id: NodeId, key: &str) -> NodeId {
         let parent_index = parent_id.0 as usize;
         if let Some(child_id) = self.nodes[parent_index].children.get(key) {
@@ -400,34 +342,43 @@ impl SchemaTree {
     }
 }
 
-struct ObjectSeed<'a> {
+struct ObjectSeedWithCallback<'a, F> {
     tree: &'a mut SchemaTree,
     node_id: NodeId,
     out: &'a mut Vec<LeafId>,
+    on_leaf: &'a mut F,
 }
 
-impl<'de> DeserializeSeed<'de> for ObjectSeed<'_> {
+impl<'de, F> DeserializeSeed<'de> for ObjectSeedWithCallback<'_, F>
+where
+    F: FnMut(LeafId, &Value),
+{
     type Value = ();
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_map(ObjectVisitor {
+        deserializer.deserialize_map(ObjectVisitorWithCallback {
             tree: self.tree,
             node_id: self.node_id,
             out: self.out,
+            on_leaf: self.on_leaf,
         })
     }
 }
 
-struct ObjectVisitor<'a> {
+struct ObjectVisitorWithCallback<'a, F> {
     tree: &'a mut SchemaTree,
     node_id: NodeId,
     out: &'a mut Vec<LeafId>,
+    on_leaf: &'a mut F,
 }
 
-impl<'de> Visitor<'de> for ObjectVisitor<'_> {
+impl<'de, F> Visitor<'de> for ObjectVisitorWithCallback<'_, F>
+where
+    F: FnMut(LeafId, &Value),
+{
     type Value = ();
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -438,41 +389,56 @@ impl<'de> Visitor<'de> for ObjectVisitor<'_> {
     where
         A: MapAccess<'de>,
     {
-        parse_object_entries(&mut map, self.tree, self.node_id, self.out)
+        parse_object_entries_with_callback(
+            &mut map,
+            self.tree,
+            self.node_id,
+            self.out,
+            self.on_leaf,
+        )
     }
 }
 
-struct ValueSeed<'a, 'k> {
+struct ValueSeedWithCallback<'a, 'k, F> {
     tree: &'a mut SchemaTree,
     node_id: NodeId,
     key: &'k str,
     out: &'a mut Vec<LeafId>,
+    on_leaf: &'a mut F,
 }
 
-impl<'de> DeserializeSeed<'de> for ValueSeed<'_, '_> {
+impl<'de, F> DeserializeSeed<'de> for ValueSeedWithCallback<'_, '_, F>
+where
+    F: FnMut(LeafId, &Value),
+{
     type Value = ();
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_any(ValueVisitor {
+        deserializer.deserialize_any(ValueVisitorWithCallback {
             tree: self.tree,
             node_id: self.node_id,
             key: self.key,
             out: self.out,
+            on_leaf: self.on_leaf,
         })
     }
 }
 
-struct ValueVisitor<'a, 'k> {
+struct ValueVisitorWithCallback<'a, 'k, F> {
     tree: &'a mut SchemaTree,
     node_id: NodeId,
     key: &'k str,
     out: &'a mut Vec<LeafId>,
+    on_leaf: &'a mut F,
 }
 
-impl<'de> Visitor<'de> for ValueVisitor<'_, '_> {
+impl<'de, F> Visitor<'de> for ValueVisitorWithCallback<'_, '_, F>
+where
+    F: FnMut(LeafId, &Value),
+{
     type Value = ();
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -483,55 +449,70 @@ impl<'de> Visitor<'de> for ValueVisitor<'_, '_> {
     where
         A: MapAccess<'de>,
     {
-        parse_object_entries(&mut map, self.tree, self.node_id, self.out)
+        parse_object_entries_with_callback(
+            &mut map,
+            self.tree,
+            self.node_id,
+            self.out,
+            self.on_leaf,
+        )
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
     where
         A: SeqAccess<'de>,
     {
-        self.emit_leaf(LeafKind::Array);
-        while seq.next_element::<IgnoredAny>()?.is_some() {}
+        let mut array_elements = Vec::new();
+        while let Some(element) = seq.next_element::<Value<'de>>()? {
+            array_elements.push(element);
+        }
+        let leaf_value = Value::Array(array_elements);
+        self.emit_leaf(LeafKind::Array, &leaf_value);
         Ok(())
     }
 
-    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E>
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        self.emit_leaf(LeafKind::Bool);
+        let leaf_value = Value::Bool(value);
+        self.emit_leaf(LeafKind::Bool, &leaf_value);
         Ok(())
     }
 
-    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E>
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        self.emit_leaf(LeafKind::Number);
+        let leaf_value = Value::from(value);
+        self.emit_leaf(LeafKind::Number, &leaf_value);
         Ok(())
     }
 
-    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E>
+    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        self.emit_leaf(LeafKind::Number);
+        let leaf_value = Value::from(value);
+        self.emit_leaf(LeafKind::Number, &leaf_value);
         Ok(())
     }
 
-    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E>
+    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        self.emit_leaf(LeafKind::Number);
+        let leaf_value = Value::from(value);
+        self.emit_leaf(LeafKind::Number, &leaf_value);
         Ok(())
     }
 
-    fn visit_str<E>(self, _: &str) -> Result<Self::Value, E>
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        self.emit_leaf(LeafKind::String);
+        let leaf_value = Value::Str(Cow::Borrowed(value));
+        self.emit_leaf(LeafKind::String, &leaf_value);
         Ok(())
     }
 
@@ -539,7 +520,8 @@ impl<'de> Visitor<'de> for ValueVisitor<'_, '_> {
     where
         E: serde::de::Error,
     {
-        self.emit_leaf(LeafKind::Null);
+        let leaf_value = Value::Null;
+        self.emit_leaf(LeafKind::Null, &leaf_value);
         Ok(())
     }
 
@@ -547,34 +529,42 @@ impl<'de> Visitor<'de> for ValueVisitor<'_, '_> {
     where
         E: serde::de::Error,
     {
-        self.emit_leaf(LeafKind::Null);
+        let leaf_value = Value::Null;
+        self.emit_leaf(LeafKind::Null, &leaf_value);
         Ok(())
     }
 }
 
-impl ValueVisitor<'_, '_> {
-    fn emit_leaf(self, kind: LeafKind) {
-        let id = self.tree.intern_leaf(self.node_id, self.key, kind);
-        self.out.push(id);
+impl<F> ValueVisitorWithCallback<'_, '_, F>
+where
+    F: FnMut(LeafId, &Value),
+{
+    fn emit_leaf(self, kind: LeafKind, leaf_value: &Value) {
+        let leaf_id = self.tree.intern_leaf(self.node_id, self.key, kind);
+        self.out.push(leaf_id);
+        (self.on_leaf)(leaf_id, leaf_value);
     }
 }
 
-fn parse_object_entries<'de, A>(
+fn parse_object_entries_with_callback<'de, A, F>(
     map: &mut A,
     tree: &mut SchemaTree,
     node_id: NodeId,
     out: &mut Vec<LeafId>,
+    on_leaf: &mut F,
 ) -> Result<(), A::Error>
 where
     A: MapAccess<'de>,
+    F: FnMut(LeafId, &Value),
 {
     while let Some(key) = map.next_key::<Cow<'de, str>>()? {
         let child_id = tree.get_or_create_child(node_id, key.as_ref());
-        map.next_value_seed(ValueSeed {
+        map.next_value_seed(ValueSeedWithCallback {
             tree,
             node_id: child_id,
             key: key.as_ref(),
             out,
+            on_leaf: &mut *on_leaf,
         })?;
     }
     Ok(())
