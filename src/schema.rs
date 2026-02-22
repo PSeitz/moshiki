@@ -111,6 +111,7 @@ const ROOT_NODE_ID: NodeId = NodeId(0);
 
 #[derive(Debug, Default)]
 struct SchemaNode {
+    /// Normally, we have less than 10 children per node, so we could use a vector.
     children: FxHashMap<String, NodeId>,
     leaves: [Option<LeafId>; LeafKind::COUNT],
 }
