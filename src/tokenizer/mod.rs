@@ -100,8 +100,6 @@ impl<'a> Tokenizer<'a> {
 enum Kind {
     IPv4,
     Number,
-    #[cfg(feature = "match_composite_id")]
-    Composite,
     Uuid,
 }
 
@@ -144,13 +142,10 @@ impl<'a> Iterator for Tokenizer<'a> {
         let start = self.pos;
         let mut choice: Option<(Kind, usize)> = None;
 
-        // a small table of (matcher → variant).  Composite row only if feature on.
+        // a small table of (matcher → variant).
         #[allow(clippy::type_complexity)]
         let matchers: &[(fn(&[u8]) -> Option<usize>, Kind)] = &[
             (is_ipv4, Kind::IPv4),
-            (is_number, Kind::Number),
-            #[cfg(feature = "match_composite_id")]
-            (is_composite_id, Kind::Composite),
             (is_number, Kind::Number),
             (is_uuid_v4, Kind::Uuid),
         ];
@@ -168,8 +163,6 @@ impl<'a> Iterator for Tokenizer<'a> {
             match kind {
                 Kind::IPv4 => Token::IPv4(start..self.pos),
                 Kind::Number => Token::Number(Number::new(self.input, start..self.pos)),
-                #[cfg(feature = "match_composite_id")]
-                Kind::Composite => Token::Word(start..self.pos),
                 Kind::Uuid => Token::Uuid(start..self.pos),
             }
         } else {
@@ -180,45 +173,6 @@ impl<'a> Iterator for Tokenizer<'a> {
 
         Some(token)
     }
-}
-
-/// Recognize composite IDs (alphanumeric segments with '-', ':', '_')
-/// Quick 8-byte heuristic: ensure mix of digit, uppercase letter
-#[inline]
-#[cfg(feature = "match_composite_id")]
-fn is_composite_id(bytes: &[u8]) -> Option<usize> {
-    // Quick check: first byte must be one of a digit, uppercase letter
-    if !bytes[0].is_ascii_digit() && !bytes[0].is_ascii_uppercase() {
-        return None;
-    }
-
-    // Must have at least 8 bytes for heuristic
-    if bytes.len() < 8 {
-        return None;
-    }
-    let quick_check: [u8; 8] = bytes[..8]
-        .try_into()
-        .expect("Slice length must be 8 bytes for quick check");
-    let has_upper = quick_check.iter().any(|&b| b.is_ascii_uppercase());
-    let has_digit = quick_check.iter().any(|&b| b.is_ascii_digit());
-
-    if !has_digit || !has_upper {
-        return None;
-    }
-
-    // full scan
-    let mut len = 0;
-    for &b in bytes {
-        if WHITESPACE_LOOKUP_TABLE[b as usize] {
-            break;
-        }
-        if b.is_ascii_digit() || b.is_ascii_uppercase() || b == b'-' || b == b':' || b == b'_' {
-            len += 1;
-        } else {
-            break;
-        }
-    }
-    Some(len)
 }
 
 /// Quick IPv4 check: four octets 0–255
@@ -596,13 +550,4 @@ mod tests {
         }
     }
 
-    #[test]
-    #[cfg(feature = "match_composite_id")]
-    fn test_bgl_tokens() {
-        let line = "- 1117838571 2005.06.03 R02-M1-N0-C:J12-U11 2005-06-03-15.42.51.749199";
-        let toks: Vec<_> = tokenize(line);
-        assert_eq!(toks.len(), 25);
-        let tokens_str = tokens_as_string(line, toks.iter().cloned());
-        assert!(tokens_str.contains(&"R02-M1-N0-C:J12-U11".to_string()));
-    }
 }

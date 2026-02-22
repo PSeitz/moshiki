@@ -39,8 +39,6 @@ harness = false
 default = ["number_as_string"]
 # Improves performance and compression
 number_as_string = []
-# Slightly Lower performance and compression
-match_composite_id = []
 # Special whitespace handling
 whitespace = []
 
