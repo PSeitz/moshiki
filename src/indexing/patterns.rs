@@ -11,9 +11,6 @@ enum MergeableTokenGroup {
     Constant(Vec<u8>),
     // Can always be merged currently
     Variable,
-    // Can merge if the number of whitespace tokens matches
-    #[cfg(feature = "whitespace")]
-    Whitespace(u32),
 }
 
 impl MergeableTokenGroup {
@@ -27,14 +24,6 @@ impl MergeableTokenGroup {
                 }
             }
             IndexingTemplateToken::Variable { .. } => MergeableTokenGroup::Variable,
-            #[cfg(feature = "whitespace")]
-            IndexingTemplateToken::Whitespace(num) => {
-                if num_docs < 100 {
-                    MergeableTokenGroup::Variable
-                } else {
-                    MergeableTokenGroup::Whitespace(*num)
-                }
-            }
         }
     }
 }

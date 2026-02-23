@@ -16,13 +16,10 @@ pub enum Token {
     Word(Range<usize>),
     /// Punctuation token
     Punctuation(Range<usize>),
-    #[cfg(feature = "whitespace")]
-    Whitespace(u32),
 }
 
 impl Token {
     /// Compares with another token to see if they are the same type, but NOT range.
-    /// Whitespace tokens are only considered equal if they have the same number of spaces.
     #[inline]
     pub fn matches(&self, other: &Token) -> bool {
         match (self, other) {
@@ -31,8 +28,6 @@ impl Token {
             (Token::IPv4(_), Token::IPv4(_)) => true,
             (Token::Uuid(_), Token::Uuid(_)) => true,
             (Token::Punctuation(_), Token::Punctuation(_)) => true,
-            #[cfg(feature = "whitespace")]
-            (Token::Whitespace(num1), Token::Whitespace(num2)) => num1 == num2,
             _ => false,
         }
     }
@@ -52,8 +47,6 @@ pub enum TokenType {
     Uuid = 4,
     /// Punctuation
     Punctuation = 5,
-    #[cfg(feature = "whitespace")]
-    Whitespace = 6,
 }
 
 impl TokenType {
@@ -66,14 +59,7 @@ impl TokenType {
             TokenType::IPv4 => concat!("\x1b[34m", "I", "\x1b[0m"),
             TokenType::Uuid => concat!("\x1b[35m", "U", "\x1b[0m"),
             TokenType::Punctuation => "P",
-            #[cfg(feature = "whitespace")]
-            TokenType::Whitespace => concat!("\x1b[36m", "S", "\x1b[0m"),
         }
-    }
-
-    #[cfg(feature = "whitespace")]
-    pub fn is_whitespace(&self) -> bool {
-        *self == TokenType::Whitespace
     }
 }
 
@@ -86,8 +72,6 @@ impl From<u8> for TokenType {
             3 => TokenType::IPv4,
             4 => TokenType::Uuid,
             5 => TokenType::Punctuation,
-            #[cfg(feature = "whitespace")]
-            6 => TokenType::Whitespace,
             _ => panic!("Invalid token type"),
         }
     }
@@ -115,8 +99,6 @@ impl TokenTypeTrait for Token {
             Token::IPv4(_) => TokenType::IPv4,
             Token::Uuid(_) => TokenType::Uuid,
             Token::Punctuation(_) => TokenType::Punctuation,
-            #[cfg(feature = "whitespace")]
-            Token::Whitespace(_) => TokenType::Whitespace,
         }
     }
 }
@@ -129,8 +111,6 @@ impl Token {
             Token::Word(r) | Token::IPv4(r) | Token::Uuid(r) | Token::Punctuation(r) => {
                 input[r.start..r.end].to_string()
             }
-            #[cfg(feature = "whitespace")]
-            Token::Whitespace(num) => " ".repeat(*num as usize),
             Token::Number(num) => num.to_string(input),
         }
     }
@@ -142,15 +122,6 @@ impl Token {
                 Some(&input.as_bytes()[r.start..r.end])
             }
             Token::Number(n) => Some(n.as_bytes(input)),
-            // White is ignored for now
-            #[cfg(feature = "whitespace")]
-            Token::Whitespace(_) => None,
         }
-    }
-
-    #[allow(dead_code)]
-    #[cfg(feature = "whitespace")]
-    pub(crate) fn is_whitespace(&self) -> bool {
-        matches!(self, Token::Whitespace(_))
     }
 }

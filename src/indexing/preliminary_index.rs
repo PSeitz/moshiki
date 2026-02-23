@@ -32,8 +32,6 @@ pub(crate) enum IndexingTemplateToken {
         column_index: usize,
         token_type: TokenType,
     },
-    #[cfg(feature = "whitespace")]
-    Whitespace(u32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
@@ -53,8 +51,6 @@ impl TokenTypeTrait for IndexingTemplateToken {
         match self {
             IndexingTemplateToken::Constant(ct) => ct.token_type,
             IndexingTemplateToken::Variable { token_type, .. } => *token_type,
-            #[cfg(feature = "whitespace")]
-            IndexingTemplateToken::Whitespace(_) => TokenType::Whitespace,
         }
     }
 }
@@ -73,8 +69,6 @@ impl IndexingTemplateToken {
         match self {
             IndexingTemplateToken::Constant(_) => false,
             IndexingTemplateToken::Variable { .. } => true,
-            #[cfg(feature = "whitespace")]
-            IndexingTemplateToken::Whitespace(_) => false,
         }
     }
 }
@@ -167,8 +161,6 @@ impl PreliminaryIndex {
                             num_like += 1;
                         }
                     }
-                    #[cfg(feature = "whitespace")]
-                    IndexingTemplateToken::Whitespace(_) => {}
                 }
             }
         }
@@ -194,8 +186,6 @@ fn get_term_id(
             let term_slice = &line.as_bytes()[v.start..v.end];
             term_hash_map.mutate_or_create(term_slice, is_id_like)
         }
-        #[cfg(feature = "whitespace")]
-        Token::Whitespace(num_whitespace) => *num_whitespace,
         Token::Number(number) => term_hash_map.mutate_or_create(number.as_bytes(line), is_id_like),
     }
 }
@@ -283,17 +273,6 @@ impl DocGroup {
                 template_token.token =
                     IndexingTemplateToken::new_variable(column_index, existing_ct.token_type);
             }
-            #[cfg(feature = "whitespace")]
-            IndexingTemplateToken::Whitespace(num) => {
-                let white_space = " ".repeat(*num as usize);
-                let term_id = _term_hash_map.mutate_or_create(white_space.as_bytes(), false, false);
-                // This position is now variable
-                let column_index = self.columns.len();
-                let new_column = vec![term_id; self.num_docs];
-                self.columns.push(new_column);
-                template_token.token =
-                    IndexingTemplateToken::new_variable(column_index, TokenType::Whitespace);
-            }
             IndexingTemplateToken::Variable { .. } => {}
         }
     }
@@ -312,14 +291,9 @@ impl DocGroup {
                         token.token_type(),
                         token
                             .as_bytes(line)
-                            .expect("Token should have bytes (except whitespace)")
+                            .expect("Token should have bytes")
                             .to_vec(),
                     )),
-                    token_index: token_pos as u32,
-                },
-                #[cfg(feature = "whitespace")]
-                Token::Whitespace(num) => TemplateTokenWithPos {
-                    token: IndexingTemplateToken::Whitespace(*num),
                     token_index: token_pos as u32,
                 },
             })
@@ -348,9 +322,7 @@ impl DocGroup {
             match &mut template_token.token {
                 IndexingTemplateToken::Constant(existing_ct) => {
                     let token = &tokens[template_token.token_index as usize];
-                    let token_bytes = token
-                        .as_bytes(line)
-                        .expect("Token should have bytes (except whitespace)");
+                    let token_bytes = token.as_bytes(line).expect("Token should have bytes");
                     if !fast_short_slice_compare(&existing_ct.text, token_bytes) {
                         let ct = get_term_id(token, line, term_hash_map, false);
                         // This position is now variable
@@ -374,10 +346,6 @@ impl DocGroup {
                     if self.num_docs == 10000 {
                         *is_id_like = check_is_id_like(&self.columns[*column_index]);
                     }
-                }
-                #[cfg(feature = "whitespace")]
-                IndexingTemplateToken::Whitespace(_) => {
-                    // Whitespace is constant within a group
                 }
             }
         }
@@ -527,24 +495,3 @@ fn dedup_term_ids_iter(iter: impl Iterator<Item = u32>) -> impl Iterator<Item = 
         }
     })
 }
-
-//impl<'a> PrelimDoc<'a> {
-//pub fn iter(self) -> impl Iterator<Item = CompositeToken> + 'a {
-//self.group
-//.template
-//.tokens
-//.iter()
-//.map(move |template_token| match &template_token.token {
-//TemplateToken::Constant(ct) => ct.composite_token,
-//TemplateToken::Variable { column_index, .. } => {
-//self.group.columns[*column_index][self.doc_index]
-//}
-//TemplateToken::Whitespace(num) => CompositeToken::new(TokenType::Whitespace, *num),
-//})
-//}
-
-//pub fn without_whitespace(self) -> impl Iterator<Item = CompositeToken> + 'a {
-//self.iter()
-//.filter(|token| !token.token_type().is_whitespace())
-//}
-//}

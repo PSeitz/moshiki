@@ -39,8 +39,6 @@ harness = false
 default = ["number_as_string"]
 # Improves performance and compression
 number_as_string = []
-# Special whitespace handling
-whitespace = []
 
 # debug in bench profile
 [profile.bench]

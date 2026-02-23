@@ -115,19 +115,7 @@ impl<'a> Iterator for Tokenizer<'a> {
 
         let bytes = &self.input.as_bytes()[self.pos..];
 
-        // 1) Whitespace
-        #[cfg(feature = "whitespace")]
-        if WHITESPACE_LOOKUP_TABLE[bytes[0] as usize] {
-            let len = bytes
-                .iter()
-                .take_while(|&&b| WHITESPACE_LOOKUP_TABLE[b as usize])
-                .count() as u32;
-            self.pos += len;
-            self.token_count += 1;
-            return Some(Token::Whitespace(len));
-        }
-
-        // 2) Punctuation
+        // 1) Punctuation
         if PUNCTUATION_LOOKUP_TABLE[bytes[0] as usize] {
             let len = bytes
                 .iter()
@@ -138,7 +126,7 @@ impl<'a> Iterator for Tokenizer<'a> {
             return Some(Token::Punctuation(start..self.pos));
         }
 
-        // 3) The “classify” table
+        // 2) The “classify” table
         let start = self.pos;
         let mut choice: Option<(Kind, usize)> = None;
 
@@ -297,257 +285,72 @@ fn word_len(bytes: &[u8]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    #[allow(unused_imports)]
     use super::*;
 
     #[test]
-    #[cfg(feature = "whitespace")]
-    fn check_is_whitespace() {
-        assert!(TokenType::Whitespace.is_whitespace());
-    }
-
-    #[test]
-    #[cfg(feature = "whitespace")]
-    fn test_tokenizer_simple() {
+    fn test_tokenizer_keeps_spaces_in_punctuation_tokens() {
         let line = "src: /10.10.34.30:33078, dest: /10.10.34.11:50010";
-        let toks: Vec<_> = tokenize(line);
-        let expected_strs = vec![
+        let tokens: Vec<_> = Tokenizer::new(line).collect();
+        let expected_strings = vec![
             "src",
-            ":",
-            " ",
-            "/",
+            ": /",
             "10.10.34.30",
             ":",
             "33078",
-            ",",
-            " ",
+            ", ",
             "dest",
-            ":",
-            " ",
-            "/",
+            ": /",
             "10.10.34.11",
             ":",
             "50010",
         ];
-        let expected_types = [
+        let expected_types = vec![
             TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
             TokenType::Punctuation,
             TokenType::IPv4,
             TokenType::Punctuation,
             TokenType::Number,
             TokenType::Punctuation,
-            TokenType::Whitespace,
             TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
             TokenType::Punctuation,
             TokenType::IPv4,
             TokenType::Punctuation,
             TokenType::Number,
         ];
 
-        for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
-            assert_eq!(tok.token_type(), expected_types[i]);
-            match tok {
-                Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
-                _ => assert_eq!(tok.to_string(line), *expected_str),
-            }
-        }
-
-        let reconstructed = reconstruct_from_tokens(line, toks.into_iter());
+        assert_eq!(
+            tokens_as_string(line, tokens.iter().cloned()),
+            expected_strings
+        );
+        assert_eq!(
+            tokens
+                .iter()
+                .map(|token| token.token_type())
+                .collect::<Vec<_>>(),
+            expected_types
+        );
+        let reconstructed = tokens
+            .iter()
+            .map(|token| token.to_string(line))
+            .collect::<String>();
         assert_eq!(reconstructed, line);
     }
 
     #[test]
-    #[cfg(feature = "whitespace")]
-    fn test_packet_expected_and_reconstruction() {
-        let line = "PacketResponder: BP-108841162-10.10.34.11-1440074360971:blk_1074072698_331874, type=HAS_DOWNSTREAM_IN_PIPELINE terminating";
-        let toks: Vec<_> = tokenize(line);
-        let expected_strs = vec![
-            "PacketResponder",
-            ":",
-            " ",
-            "BP-108841162-10.10.34.11-1440074360971",
-            ":",
-            "blk_1074072698_331874",
-            ",",
-            " ",
-            "type",
-            "=",
-            "HAS_DOWNSTREAM_IN_PIPELINE",
-            " ",
-            "terminating",
-        ];
-        let expected_types = [
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Word,
-            TokenType::Whitespace,
-            TokenType::Word,
-        ];
+    fn test_tokenizer_merges_multiple_spaces_into_one_punctuation_token() {
+        let line = "alpha   beta";
+        let tokens: Vec<_> = Tokenizer::new(line).collect();
 
-        for (i, (tok, expected_str)) in toks.iter().zip(expected_strs.iter()).enumerate() {
-            assert_eq!(tok.token_type(), expected_types[i]);
-            match tok {
-                Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
-                _ => assert_eq!(tok.to_string(line), *expected_str),
-            }
-        }
-
-        let reconstructed = reconstruct_from_tokens(line, toks.into_iter());
-        assert_eq!(reconstructed, line);
+        assert_eq!(
+            tokens_as_string(line, tokens.iter().cloned()),
+            ["alpha", "   ", "beta"]
+        );
+        assert_eq!(
+            tokens
+                .iter()
+                .map(|token| token.token_type())
+                .collect::<Vec<_>>(),
+            [TokenType::Word, TokenType::Punctuation, TokenType::Word]
+        );
     }
-
-    #[test]
-    #[cfg(feature = "whitespace")]
-    fn test_tokenizer_log_line() {
-        let line = "src: /10.10.34.11:52611, dest: /10.10.34.42:50010, bytes: 162571, op: HDFS_WRITE, cliID: DFSClient_NONMAPREDUCE_-941064892_1, offset: 0, srvID: ac6cb715-a2bc-4644-aaa4-10fcbd1c390e, blockid: BP-108841162-10.10.34.11-1440074360971:blk_1073854279_113455, duration: 3374681";
-        let toks: Vec<_> = tokenize(line);
-
-        let expected_strs = vec![
-            "src",
-            ":",
-            " ",
-            "/",
-            "10.10.34.11",
-            ":",
-            "52611",
-            ",",
-            " ",
-            "dest",
-            ":",
-            " ",
-            "/",
-            "10.10.34.42",
-            ":",
-            "50010",
-            ",",
-            " ",
-            "bytes",
-            ":",
-            " ",
-            "162571",
-            ",",
-            " ",
-            "op",
-            ":",
-            " ",
-            "HDFS_WRITE",
-            ",",
-            " ",
-            "cliID",
-            ":",
-            " ",
-            "DFSClient_NONMAPREDUCE_-941064892_1",
-            ",",
-            " ",
-            "offset",
-            ":",
-            " ",
-            "0",
-            ",",
-            " ",
-            "srvID",
-            ":",
-            " ",
-            "ac6cb715-a2bc-4644-aaa4-10fcbd1c390e",
-            ",",
-            " ",
-            "blockid",
-            ":",
-            " ",
-            "BP-108841162-10.10.34.11-1440074360971",
-            ":",
-            "blk_1073854279_113455",
-            ",",
-            " ",
-            "duration",
-            ":",
-            " ",
-            "3374681",
-        ];
-
-        let expected_types = [
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Punctuation,
-            TokenType::IPv4,
-            TokenType::Punctuation,
-            TokenType::Number,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Punctuation,
-            TokenType::IPv4,
-            TokenType::Punctuation,
-            TokenType::Number,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Number,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Number,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Uuid,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Word,
-            TokenType::Punctuation,
-            TokenType::Whitespace,
-            TokenType::Number,
-        ];
-
-        let actual_token_types = toks.iter().map(|t| t.token_type()).collect::<Vec<_>>();
-        assert_eq!(actual_token_types, expected_types);
-        for (tok, expected_str) in toks.iter().zip(expected_strs.iter()) {
-            match tok {
-                Token::Whitespace(len) => assert_eq!(*len as usize, expected_str.len()),
-                _ => assert_eq!(tok.to_string(line), *expected_str),
-            }
-        }
-    }
-
 }

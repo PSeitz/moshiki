@@ -46,11 +46,6 @@ impl Template {
                 TemplateToken::Variable => {
                     out.push('?');
                 }
-                TemplateToken::Whitespace(n) => {
-                    for _ in 0..*n {
-                        out.push(' ');
-                    }
-                }
             }
         }
         out
@@ -70,9 +65,6 @@ impl Template {
                         .expect("Term ID out of bounds");
                     reconstructed.push_str(&term);
                     term_id_idx += 1;
-                }
-                TemplateToken::Whitespace(num) => {
-                    reconstructed.extend(std::iter::repeat_n(' ', *num as usize));
                 }
             }
         }
@@ -112,7 +104,6 @@ impl From<&IndexingTemplate> for TemplateWithId {
 pub enum TemplateToken {
     Constant(Vec<u8>),
     Variable,
-    Whitespace(u32),
 }
 impl TemplateToken {
     pub fn check_match(&self, term: &str) -> MatchResult {
@@ -125,13 +116,6 @@ impl TemplateToken {
                 }
             }
             TemplateToken::Variable => MatchResult::VariableMayMatch,
-            TemplateToken::Whitespace(_) => {
-                if term.is_empty() {
-                    MatchResult::Full
-                } else {
-                    MatchResult::NoMatch
-                }
-            }
         }
     }
 }
@@ -142,8 +126,6 @@ impl From<&IndexingTemplateToken> for TemplateToken {
                 TemplateToken::Constant(const_token.text.to_vec())
             }
             indexing::IndexingTemplateToken::Variable { .. } => TemplateToken::Variable,
-            #[cfg(feature = "whitespace")]
-            indexing::IndexingTemplateToken::Whitespace(id) => TemplateToken::Whitespace(*id),
         }
     }
 }
